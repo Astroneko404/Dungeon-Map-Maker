@@ -60,7 +60,10 @@ oneWayDoorImg.src = oneWayDoorUrl
 //////////////////////////
 const size = 20 // Default 20
 const tileSize = 32
-const canvasSize = size * tileSize
+const axisPadding = 24
+const canvasSize = size * tileSize + axisPadding * 2
+const offsetX = axisPadding
+const offsetY = axisPadding
 
 const canvas = ref<HTMLCanvasElement | null>(null)
 let ctx: CanvasRenderingContext2D | null = null
@@ -117,19 +120,6 @@ function applyTool(x: number, y: number, edge: Edge): void {
     cycleOneWayDoor(x, y, edge)
     return
   }
-}
-
-function getNeighbor(
-  x: number,
-  y: number,
-  edge: Edge
-): { nx: number; ny: number; opposite: Edge } | null {
-  if (edge === N && y > 0) return { nx: x, ny: y - 1, opposite: S }
-  if (edge === E && x < size - 1) return { nx: x + 1, ny: y, opposite: W }
-  if (edge === S && y < size - 1) return { nx: x, ny: y + 1, opposite: N }
-  if (edge === W && x > 0) return { nx: x - 1, ny: y, opposite: E }
-
-  return null
 }
 
 function clearEdge(x: number, y: number, edge: Edge) {
@@ -205,11 +195,59 @@ function draw(): void {
   if (!ctx) return
 
   ctx.clearRect(0, 0, canvasSize, canvasSize)
-  drawGrid();
+  drawAxes()
+
+  ctx.save()
+  ctx.translate(offsetX, offsetY);
+
+  drawGrid()
+
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       drawContent(x, y, grid[y]![x]!)
     }
+  }
+
+  ctx.restore()
+}
+
+function drawAxes(): void {
+  if (!ctx) return
+
+  ctx.fillStyle = '#000'
+  ctx.font = '12px monospace'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+
+  // X axis (top & bottom)
+  for (let x = 0; x < size; x++) {
+    const px = offsetX + x * tileSize + tileSize / 2
+
+    // Top
+    ctx.fillText(String(x), px, offsetY / 2)
+
+    // Bottom
+    ctx.fillText(
+      String(x),
+      px,
+      offsetY + size * tileSize + offsetY / 2
+    )
+  }
+
+  // Y axis (left & right)
+  for (let y = 0; y < size; y++) {
+    const displayY = size - 1 - y // flip so bottom = 0
+    const py = offsetY + y * tileSize + tileSize / 2
+
+    // Left
+    ctx.fillText(String(displayY), offsetX / 2, py)
+
+    // Right
+    ctx.fillText(
+      String(displayY),
+      offsetX + size * tileSize + offsetX / 2,
+      py
+    )
   }
 }
 
@@ -384,13 +422,26 @@ function drawOneWayDoor(x: number, y: number, edge: Edge, dir: Edge): void {
   ctx.restore()
 }
 
+function getNeighbor(
+  x: number,
+  y: number,
+  edge: Edge
+): { nx: number; ny: number; opposite: Edge } | null {
+  if (edge === N && y > 0) return { nx: x, ny: y - 1, opposite: S }
+  if (edge === E && x < size - 1) return { nx: x + 1, ny: y, opposite: W }
+  if (edge === S && y < size - 1) return { nx: x, ny: y + 1, opposite: N }
+  if (edge === W && x > 0) return { nx: x - 1, ny: y, opposite: E }
+
+  return null
+}
+
 function handleClick(e: MouseEvent): void {
   if (!canvas.value) return
 
   const rect = canvas.value.getBoundingClientRect()
 
-  const x = e.clientX - rect.left
-  const y = e.clientY - rect.top
+  const x = e.clientX - rect.left - offsetX
+  const y = e.clientY - rect.top - offsetY
 
   const gridX = Math.floor(x / tileSize)
   const gridY = Math.floor(y / tileSize)
