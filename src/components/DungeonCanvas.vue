@@ -5,6 +5,11 @@
   :height="canvasSize"
   style="background-color: aliceblue;"
   @click="handleClick"
+  @wheel="handleWheel"
+  @mousedown="handleMouseDown"
+  @mousemove="handleMouseMove"
+  @mouseup="handleMouseUp"
+  @mouseleave="handleMouseUp"
   />
 </template>
 
@@ -16,6 +21,12 @@ import doorUrl from '@/assets/legend/door.svg?url'
 //////////////////////////
 // Constants and Types
 //////////////////////////
+const size = 20 // Default 20
+const tileSize = 32
+const axisPadding = 24
+const canvasSize = size * tileSize + axisPadding * 2
+const axisOffsetX = axisPadding
+const axisOffsetY = axisPadding
 const N = 1 as const
 const E = 2 as const
 const S = 4 as const
@@ -23,6 +34,11 @@ const W = 8 as const
 const props = defineProps<{
   tool: 'wall' | 'door' | 'dooroneway'
 }>()
+const scale = ref(1)
+const offset = ref({ x: 0, y: 0 })
+const isDragging = ref(false)
+let lastMouse = { x: 0, y: 0 }
+let hasDragged = false
 
 type Edge = typeof N | typeof E | typeof S | typeof W
 type Cell = {
@@ -58,13 +74,6 @@ oneWayDoorImg.src = oneWayDoorUrl
 //////////////////////////
 // State
 //////////////////////////
-const size = 20 // Default 20
-const tileSize = 32
-const axisPadding = 24
-const canvasSize = size * tileSize + axisPadding * 2
-const offsetX = axisPadding
-const offsetY = axisPadding
-
 const canvas = ref<HTMLCanvasElement | null>(null)
 let ctx: CanvasRenderingContext2D | null = null
 
@@ -195,11 +204,12 @@ function draw(): void {
   if (!ctx) return
 
   ctx.clearRect(0, 0, canvasSize, canvasSize)
-  drawAxes()
 
+  // Grid & Objects
   ctx.save()
-  ctx.translate(offsetX, offsetY);
-
+  ctx.translate(offset.value.x, offset.value.y)
+  ctx.scale(scale.value, scale.value)
+  ctx.translate(axisOffsetX, axisOffsetY)
   drawGrid()
 
   for (let y = 0; y < size; y++) {
@@ -209,45 +219,94 @@ function draw(): void {
   }
 
   ctx.restore()
+
+  // Axis
+  ctx.save()
+  drawAxes()
+
+  ctx.restore()
 }
 
 function drawAxes(): void {
   if (!ctx) return
 
-  ctx.fillStyle = '#000'
+  const padding = 12
+  const tickSize = 6
+
+  ctx.fillStyle = '#555'
+  ctx.strokeStyle = '#555'
+  ctx.lineWidth = 1
+
   ctx.font = '12px monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
 
-  // X axis (top & bottom)
+  // --- X AXIS ---
   for (let x = 0; x < size; x++) {
-    const px = offsetX + x * tileSize + tileSize / 2
+    const centerX =
+      (x * tileSize + tileSize / 2 + axisOffsetX) * scale.value +
+      offset.value.x
 
-    // Top
-    ctx.fillText(String(x), px, offsetY / 2)
+    if (centerX < 0 || centerX > canvasSize) continue
 
-    // Bottom
-    ctx.fillText(
-      String(x),
-      px,
-      offsetY + size * tileSize + offsetY / 2
-    )
+    // Labels
+    ctx.fillText(String(x), centerX, padding)
+    ctx.fillText(String(x), centerX, canvasSize - padding)
   }
 
-  // Y axis (left & right)
+  // Vertical separators (edges)
+  for (let x = 0; x <= size; x++) {
+    const edgeX =
+      (x * tileSize + axisOffsetX) * scale.value + offset.value.x
+
+    if (edgeX < 0 || edgeX > canvasSize) continue
+
+    // Top ticks
+    ctx.beginPath()
+    ctx.moveTo(edgeX, padding - tickSize)
+    ctx.lineTo(edgeX, padding + tickSize)
+    ctx.stroke()
+
+    // Bottom ticks
+    ctx.beginPath()
+    ctx.moveTo(edgeX, canvasSize - padding - tickSize)
+    ctx.lineTo(edgeX, canvasSize - padding + tickSize)
+    ctx.stroke()
+  }
+
+  // --- Y AXIS ---
   for (let y = 0; y < size; y++) {
-    const displayY = size - 1 - y // flip so bottom = 0
-    const py = offsetY + y * tileSize + tileSize / 2
+    const centerY =
+      (y * tileSize + tileSize / 2 + axisOffsetY) * scale.value +
+      offset.value.y
 
-    // Left
-    ctx.fillText(String(displayY), offsetX / 2, py)
+    if (centerY < 0 || centerY > canvasSize) continue
 
-    // Right
-    ctx.fillText(
-      String(displayY),
-      offsetX + size * tileSize + offsetX / 2,
-      py
-    )
+    const displayY = size - 1 - y
+
+    // Labels
+    ctx.fillText(String(displayY), padding, centerY)
+    ctx.fillText(String(displayY), canvasSize - padding, centerY)
+  }
+
+  // Horizontal separators (edges)
+  for (let y = 0; y <= size; y++) {
+    const edgeY =
+      (y * tileSize + axisOffsetY) * scale.value + offset.value.y
+
+    if (edgeY < 0 || edgeY > canvasSize) continue
+
+    // Left ticks
+    ctx.beginPath()
+    ctx.moveTo(padding - tickSize, edgeY)
+    ctx.lineTo(padding + tickSize, edgeY)
+    ctx.stroke()
+
+    // Right ticks
+    ctx.beginPath()
+    ctx.moveTo(canvasSize - padding - tickSize, edgeY)
+    ctx.lineTo(canvasSize - padding + tickSize, edgeY)
+    ctx.stroke()
   }
 }
 
@@ -436,12 +495,17 @@ function getNeighbor(
 }
 
 function handleClick(e: MouseEvent): void {
+  if (hasDragged) return
   if (!canvas.value) return
 
   const rect = canvas.value.getBoundingClientRect()
 
-  const x = e.clientX - rect.left - offsetX
-  const y = e.clientY - rect.top - offsetY
+  const mouseX = e.clientX - rect.left
+  const mouseY = e.clientY - rect.top
+
+  // const x = e.clientX - rect.left - axisOffsetX
+  // const y = e.clientY - rect.top - axisOffsetY
+  const { x, y } = screenToWorld(mouseX, mouseY)
 
   const gridX = Math.floor(x / tileSize)
   const gridY = Math.floor(y / tileSize)
@@ -474,6 +538,60 @@ function handleClick(e: MouseEvent): void {
   draw()
 }
 
+function handleMouseDown(e: MouseEvent) {
+  isDragging.value = true
+  hasDragged = false
+  lastMouse = { x: e.clientX, y: e.clientY }
+}
+
+function handleMouseMove(e: MouseEvent) {
+  if (!isDragging.value) return
+
+  const dx = e.clientX - lastMouse.x
+  const dy = e.clientY - lastMouse.y
+
+  if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+    hasDragged = true
+  }
+
+  offset.value.x += dx
+  offset.value.y += dy
+
+  lastMouse = { x: e.clientX, y: e.clientY }
+
+  draw()
+}
+
+function handleMouseUp() {
+  isDragging.value = false
+}
+
+function handleWheel(e: WheelEvent) {
+  e.preventDefault()
+
+  const zoomFactor = 1.1
+  const rect = canvas.value!.getBoundingClientRect()
+
+  const mouseX = e.clientX - rect.left
+  const mouseY = e.clientY - rect.top
+
+  const worldBefore = screenToWorld(mouseX, mouseY)
+
+  if (e.deltaY < 0) {
+    scale.value *= zoomFactor
+  } else {
+    scale.value /= zoomFactor
+  }
+
+  const worldAfter = screenToWorld(mouseX, mouseY)
+
+  // keep mouse position stable
+  offset.value.x += (worldAfter.x - worldBefore.x) * scale.value
+  offset.value.y += (worldAfter.y - worldBefore.y) * scale.value
+
+  draw()
+}
+
 function line(x1: number, y1: number, x2: number, y2: number): void {
   if (!ctx) return
 
@@ -487,6 +605,12 @@ function normalizeEdge(x: number, y: number, edge: Edge) {
   if (edge === W) return { x: x - 1, y, edge: E }
   if (edge === N) return { x, y: y - 1, edge: S }
   return { x, y, edge }
+}
+
+function screenToWorld(mx: number, my: number) {
+  const x = (mx - offset.value.x) / scale.value - axisOffsetX
+  const y = (my - offset.value.y) / scale.value - axisOffsetY
+  return { x, y }
 }
 
 function toggleDoor(x: number, y: number, edge: Edge): void {
