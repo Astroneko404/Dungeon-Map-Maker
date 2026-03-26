@@ -18,6 +18,11 @@ import { ref, onMounted } from 'vue'
 import oneWayDoorUrl from '@/assets/legend/onewaydoor.svg?url'
 import doorUrl from '@/assets/legend/door.svg?url'
 
+defineExpose({
+  exportMap,
+  importMap
+})
+
 //////////////////////////
 // Constants and Types
 //////////////////////////
@@ -42,9 +47,10 @@ let hasDragged = false
 
 type Edge = typeof N | typeof E | typeof S | typeof W
 type Cell = {
-  walls: number
-  oneWayDoors: Partial<Record<Edge, Edge>> 
-  doors: Partial<Record<Edge, boolean>>
+  walls: number             // bitmask (N,E,S,W)
+  doors: number             // bitmask (N,E,S,W)
+  oneWayDoors: number       // bitmask (N,E,S,W)
+  oneWayDoorsDir: number    // bitmask direction per edge
 }
 
 //////////////////////////
@@ -80,8 +86,9 @@ let ctx: CanvasRenderingContext2D | null = null
 const grid: Cell[][] = Array.from({ length: size }, () =>
   Array.from({ length: size }, (): Cell => ({
     walls: 0,
-    oneWayDoors: {},
-    doors: {}
+    doors: 0,
+    oneWayDoors: 0,
+    oneWayDoorsDir: 0
   }))
 )
 
@@ -112,6 +119,32 @@ oneWayDoorImg.onerror = (e) => {
 }
 })
 
+function exportMap(): string {
+  return JSON.stringify(grid)
+}
+
+function importMap(json: string): void {
+  try {
+    const data = JSON.parse(json)
+
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const src = data[y]?.[x]
+        if (!src) continue
+
+        grid[y]![x]!.walls = src.walls ?? 0
+        grid[y]![x]!.doors = src.doors ?? 0
+        grid[y]![x]!.oneWayDoors = src.oneWayDoors ?? 0
+        grid[y]![x]!.oneWayDoorsDir = src.oneWayDoorsDir ?? 0
+      }
+    }
+
+    draw()
+  } catch (e) {
+    console.error('Invalid map JSON', e)
+  }
+}
+
 function applyTool(x: number, y: number, edge: Edge): void {
   const tool = props.tool
 
@@ -134,59 +167,59 @@ function applyTool(x: number, y: number, edge: Edge): void {
 function clearEdge(x: number, y: number, edge: Edge) {
   const cell = grid[y]![x]!
 
-  // clear current
   cell.walls &= ~edge
-  delete cell.doors[edge]
-  delete cell.oneWayDoors[edge]
+  cell.doors &= ~edge
+  cell.oneWayDoors &= ~edge
+  cell.oneWayDoorsDir &= ~edge
 
-  // clear neighbor
   const neighbor = getNeighbor(x, y, edge)
   if (!neighbor) return
 
   const { nx, ny, opposite } = neighbor
-  const neighborCell = grid[ny]![nx]!
+  const nCell = grid[ny]![nx]!
 
-  neighborCell.walls &= ~opposite
-  delete neighborCell.doors[opposite]
-  delete neighborCell.oneWayDoors[opposite]
+  nCell.walls &= ~opposite
+  nCell.doors &= ~opposite
+  nCell.oneWayDoors &= ~opposite
+  nCell.oneWayDoorsDir &= ~opposite
 }
 
 function cycleOneWayDoor(x: number, y: number, edge: Edge): void {
   const cell = grid[y]![x]!
-  const current = cell.oneWayDoors[edge]
 
-  let next: Edge | undefined
+  const hasDoor = cell.oneWayDoors & edge
+  const currentDir = cell.oneWayDoorsDir & edge
 
-  // Horizontal edges: S → N → remove
+  let nextDir: number = 0
+
   if (edge === N || edge === S) {
-    if (!current) next = S
-    else if (current === S) next = N
-    else next = undefined
-  } 
-  // Vertical edges: E → W → remove
-  else {
-    if (!current) next = E
-    else if (current === E) next = W
-    else next = undefined
+    if (!hasDoor) nextDir = S
+    else if (currentDir === S) nextDir = N
+    else nextDir = 0
+  } else {
+    if (!hasDoor) nextDir = E
+    else if (currentDir === E) nextDir = W
+    else nextDir = 0
   }
 
-  // If removing (toggle off)
-  if (!next) {
-    delete cell.oneWayDoors[edge]
-
-    const neighbor = getNeighbor(x, y, edge)
-    if (neighbor) {
-      const { nx, ny, opposite } = neighbor
-      delete grid[ny]![nx]!.oneWayDoors[opposite]
-    }
-  return
+  // Remove
+  if (!nextDir) {
+    cell.oneWayDoors &= ~edge
+    cell.oneWayDoorsDir &= ~edge
+    return
   }
 
-  if (!current) {
+  if (!hasDoor) {
     clearEdge(x, y, edge)
   }
 
-  cell.oneWayDoors[edge] = next
+  cell.oneWayDoors |= edge
+
+  // Clear old direction bit for this edge
+  cell.oneWayDoorsDir &= ~edge
+
+  // Set new direction
+  cell.oneWayDoorsDir |= nextDir
 }
 
 function dashedLine(x1: number, y1: number, x2: number, y2: number): void {
@@ -343,20 +376,20 @@ function drawContent(x: number, y: number, cell: Cell): void {
   if (cell.walls & W) line(px, py, px, py + tileSize)
 
   // Doors
-  if (cell.doors?.[N]) drawDoor(x, y, N)
-  if (cell.doors?.[E]) drawDoor(x, y, E)
-  if (cell.doors?.[S]) drawDoor(x, y, S)
-  if (cell.doors?.[W]) drawDoor(x, y, W)
+  if (cell.doors & N) drawDoor(x, y, N)
+  if (cell.doors & E) drawDoor(x, y, E)
+  if (cell.doors & S) drawDoor(x, y, S)
+  if (cell.doors & W) drawDoor(x, y, W)
 
   // One-way Doors
-  const dir = cell.oneWayDoors?.[N]
-  if (dir) drawOneWayDoor(x, y, N, dir)
-  const dirE = cell.oneWayDoors?.[E]
-  if (dirE) drawOneWayDoor(x, y, E, dirE)
-  const dirS = cell.oneWayDoors?.[S]
-  if (dirS) drawOneWayDoor(x, y, S, dirS)
-  const dirW = cell.oneWayDoors?.[W]
-  if (dirW) drawOneWayDoor(x, y, W, dirW)
+  function getDir(cell: Cell, edge: Edge): Edge | null {
+    const dir = cell.oneWayDoorsDir & (N | E | S | W)
+    return dir ? (dir as Edge) : null
+  }
+  if (cell.oneWayDoors & N) drawOneWayDoor(x, y, N, getDir(cell, N)!)
+  if (cell.oneWayDoors & E) drawOneWayDoor(x, y, E, getDir(cell, E)!)
+  if (cell.oneWayDoors & S) drawOneWayDoor(x, y, S, getDir(cell, S)!)
+  if (cell.oneWayDoors & W) drawOneWayDoor(x, y, W, getDir(cell, W)!)
 }
 
 function drawDoor(x: number, y: number, edge: Edge): void {
@@ -615,14 +648,14 @@ function screenToWorld(mx: number, my: number) {
 
 function toggleDoor(x: number, y: number, edge: Edge): void {
   const cell = grid[y]![x]!
-  
-  if (cell.doors[edge]) {
+
+  if (cell.doors & edge) {
     clearEdge(x, y, edge)
     return
   }
 
   clearEdge(x, y, edge)
-  cell.doors[edge] = true
+  cell.doors |= edge
 }
 
 function toggleWall(x: number, y: number, edge: Edge): void {
