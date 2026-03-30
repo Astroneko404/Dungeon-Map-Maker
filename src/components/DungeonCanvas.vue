@@ -29,6 +29,8 @@ defineExpose({
 const size = 20 // Default 20
 const tileSize = 32
 const axisPadding = 24
+const zoomMin = 0.7
+const zoomMax = 2.0
 const canvasSize = size * tileSize + axisPadding * 2
 const axisOffsetX = axisPadding
 const axisOffsetY = axisPadding
@@ -42,8 +44,10 @@ const props = defineProps<{
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
 const isDragging = ref(false)
+const showZoomIndicator = ref(false)
 let lastMouse = { x: 0, y: 0 }
 let hasDragged = false
+let zoomTimeout: number | null = null
 
 type Edge = typeof N | typeof E | typeof S | typeof W
 type Cell = {
@@ -118,10 +122,6 @@ oneWayDoorImg.onerror = (e) => {
   console.error('SVG failed to load', e)
 }
 })
-
-function exportMap(): string {
-  return JSON.stringify(grid)
-}
 
 function importMap(json: string): void {
   try {
@@ -258,6 +258,10 @@ function draw(): void {
   drawAxes()
 
   ctx.restore()
+
+  if (showZoomIndicator.value) {
+    drawZoomIndicator()
+  }
 }
 
 function drawAxes(): void {
@@ -514,6 +518,39 @@ function drawOneWayDoor(x: number, y: number, edge: Edge, dir: Edge): void {
   ctx.restore()
 }
 
+function drawZoomIndicator(): void {
+  if (!ctx) return
+
+  const padding = 8
+  const boxWidth = 80
+  const boxHeight = 24
+
+  const x = canvasSize - boxWidth - padding
+  const y = canvasSize - boxHeight - padding
+
+  // Background
+  ctx.fillStyle = 'white'
+  ctx.fillRect(x, y, boxWidth, boxHeight)
+
+  // Border
+  ctx.strokeStyle = 'black'
+  ctx.lineWidth = 1
+  ctx.strokeRect(x, y, boxWidth, boxHeight)
+
+  // Text
+  ctx.fillStyle = 'black'
+  ctx.font = '12px monospace'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+
+  const percent = Math.round(scale.value * 100)
+  ctx.fillText(`${percent}%`, x + boxWidth / 2, y + boxHeight / 2)
+}
+
+function exportMap(): string {
+  return JSON.stringify(grid)
+}
+
 function getNeighbor(
   x: number,
   y: number,
@@ -609,12 +646,25 @@ function handleWheel(e: WheelEvent) {
   const mouseY = e.clientY - rect.top
 
   const worldBefore = screenToWorld(mouseX, mouseY)
+  let newScale = scale.value
 
   if (e.deltaY < 0) {
-    scale.value *= zoomFactor
+    newScale *= zoomFactor
   } else {
-    scale.value /= zoomFactor
+    newScale /= zoomFactor
   }
+  newScale = Math.min(zoomMax, Math.max(zoomMin, newScale))
+  if (newScale == scale.value) return
+  scale.value = newScale
+
+  showZoomIndicator.value = true
+  if (zoomTimeout) {
+    clearTimeout(zoomTimeout)
+  }
+  zoomTimeout = window.setTimeout(() => {
+  showZoomIndicator.value = false
+  draw()
+}, 800)
 
   const worldAfter = screenToWorld(mouseX, mouseY)
 

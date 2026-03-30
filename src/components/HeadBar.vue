@@ -3,25 +3,21 @@
     <div class="title">Dungeon Editor</div>
 
     <div class="actions">
-    <!-- Map Name -->
     <input
         v-model="mapName"
         class="name-input"
         placeholder="Map name..."
     />
 
-    <!-- Open -->
-    <button @click="triggerFile">
+    <button @click="openFile">
         <img :src="openIcon" />
     </button>
 
-    <!-- Save -->
     <button @click="saveFile">
         <img :src="saveIcon" />
     </button>
     </div>
 
-    <!-- hidden file input -->
     <input
       ref="fileInput"
       type="file"
@@ -46,10 +42,6 @@ const props = defineProps<{
 
 const fileInput = ref<HTMLInputElement | null>(null)
 
-function triggerFile() {
-  fileInput.value?.click()
-}
-
 function handleFile(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
@@ -62,6 +54,10 @@ function handleFile(e: Event) {
     }
   }
   reader.readAsText(file)
+}
+
+function openFile() {
+  fileInput.value?.click()
 }
 
 function saveFile() {
