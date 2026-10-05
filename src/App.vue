@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar.vue'
 import DungeonCanvas from './components/DungeonCanvas.vue'
 import HeaderBar from './components/HeadBar.vue'
 
-type Tool = 'wall' | 'door' | 'dooroneway'
+type Tool = 'wall' | 'door' | 'downstair' | 'upstair'
 const currentTool = ref<Tool>('wall')
 
 const canvasRef = ref<InstanceType<typeof DungeonCanvas> | null>(null)
@@ -41,7 +41,7 @@ function importMap(json: string) {
 <style>
 .app {
   display: flex;
-  flex-direction: column; /* KEY */
+  flex-direction: column;
   height: 100vh;
 }
 .main {

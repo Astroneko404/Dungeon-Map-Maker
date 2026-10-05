@@ -1,8 +1,12 @@
 <script setup lang="ts">
   import wallIcon from '@/assets/legend/wall.svg?url'
-  import doorIcon from '@/assets/legend/door.svg?url'
-  import oneWayIcon from '@/assets/legend/onewaydoor.svg?url'
-  type Tool = 'wall' | 'door' | 'dooroneway'
+  // import doorIcon from '@/assets/legend/door.svg?url'
+  import doorOpenedIcon from '@/assets/legend/dooropened.svg?url'
+  import doorClosedIcon from '@/assets/legend/doorclosed.svg?url'
+  import downStairIcon from '@/assets/legend/downstair.svg?url'
+  import upStairIcon from '@/assets/legend/upstair.svg?url'
+
+  type Tool = 'wall' | 'door' | 'downstair' | 'upstair'
 
   const emit = defineEmits<{
     (e: 'changeTool', tool: Tool): void
@@ -27,22 +31,6 @@
           <img :src="wallIcon" />
           <span>Wall</span>
         </button>
-
-        <button 
-          :class="{ active: props.tool === 'door' }"
-          @click="emit('changeTool', 'door')"
-        >
-          <img :src="doorIcon" />
-          <span>Door</span>
-        </button>
-
-        <button 
-          :class="{ active: props.tool === 'dooroneway' }"
-          @click="emit('changeTool', 'dooroneway')"
-        >
-          <img :src="oneWayIcon" />
-          <span>One-way Door</span>
-        </button>
       </div>
     </div>
 
@@ -51,10 +39,28 @@
       <div class="section-title">Cell</div>
 
       <div class="grid">
-        <!-- placeholder for future tools -->
-        <button disabled>
-          <div class="placeholder" />
-          <span>Empty</span>
+        <button 
+          :class="{ active: props.tool === 'door' }"
+          @click="emit('changeTool', 'door')"
+        >
+          <img :src="doorClosedIcon" />
+          <span>Door</span>
+        </button>
+
+        <button 
+          :class="{ active: props.tool === 'downstair' }"
+          @click="emit('changeTool', 'downstair')"
+        >
+          <img :src="downStairIcon" />
+          <span>Stairs - Down</span>
+        </button>
+
+        <button 
+          :class="{ active: props.tool === 'upstair' }"
+          @click="emit('changeTool', 'upstair')"
+        >
+          <img :src="upStairIcon" />
+          <span>Stairs - Up</span>
         </button>
       </div>
     </div>
@@ -63,8 +69,8 @@
 
 <style scoped>
 .sidebar {
-  width: 180px;
-  min-width: 180px;
+  width: 240px;
+  min-width: 240px;
   background: #2b2b2b;
   padding: 12px;
   display: flex;

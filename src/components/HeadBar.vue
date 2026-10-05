@@ -57,7 +57,9 @@ function handleFile(e: Event) {
 }
 
 function openFile() {
-  fileInput.value?.click()
+  if (!fileInput.value) return
+  fileInput.value.value = ''
+  fileInput.value.click()
 }
 
 function saveFile() {

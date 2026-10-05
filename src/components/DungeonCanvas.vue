@@ -15,9 +15,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import oneWayDoorUrl from '@/assets/legend/onewaydoor.svg?url'
-import doorUrl from '@/assets/legend/door.svg?url'
-
+import doorClosedIcon from '@/assets/legend/doorclosed.svg?url'
+import downStairIcon from '@/assets/legend/downstair.svg?url'
+import upStairIcon from '@/assets/legend/upstair.svg?url'
 defineExpose({
   exportMap,
   importMap
@@ -39,7 +39,7 @@ const E = 2 as const
 const S = 4 as const
 const W = 8 as const
 const props = defineProps<{
-  tool: 'wall' | 'door' | 'dooroneway'
+  tool: 'wall' | 'door' | 'downstair' | 'upstair'
 }>()
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
@@ -52,10 +52,12 @@ let zoomTimeout: number | null = null
 type Edge = typeof N | typeof E | typeof S | typeof W
 type Cell = {
   walls: number             // bitmask (N,E,S,W)
-  doors: number             // bitmask (N,E,S,W)
-  oneWayDoors: number       // bitmask (N,E,S,W)
-  oneWayDoorsDir: number    // bitmask direction per edge
+  doors: number             // 0: No door | 1: Door closed
+  upstair: number           // 0: No upstair | 1: Upstair
+  downstair: number         // 0: No downstair | 1: Downstair
 }
+
+const AUTOSAVE_KEY = 'map-autosave'
 
 //////////////////////////
 // Image Assets
@@ -68,18 +70,27 @@ doorImg.onerror = (e) => {
   console.error('Failed to load Door SVG', e)
 }
 doorImg.crossOrigin = 'anonymous'
-doorImg.src = doorUrl
+doorImg.src = doorClosedIcon
 
-
-const oneWayDoorImg = new Image()
-oneWayDoorImg.onload = () => {
+const downStairImg = new Image()
+downStairImg.onload = () => {
   draw()
 }
-oneWayDoorImg.onerror = (e) => {
-  console.error('Failed to load OneWayDoor SVG', e)
+downStairImg.onerror = (e) => {
+  console.error('Failed to load Down Stair SVG', e)
 }
-oneWayDoorImg.crossOrigin = 'anonymous'
-oneWayDoorImg.src = oneWayDoorUrl
+downStairImg.crossOrigin = 'anonymous'
+downStairImg.src = downStairIcon
+
+const upStairImg = new Image()
+upStairImg.onload = () => {
+  draw()
+}
+upStairImg.onerror = (e) => {
+  console.error('Failed to load Up Stair SVG', e)
+}
+upStairImg.crossOrigin = 'anonymous'
+upStairImg.src = upStairIcon
 
 //////////////////////////
 // State
@@ -91,8 +102,8 @@ const grid: Cell[][] = Array.from({ length: size }, () =>
   Array.from({ length: size }, (): Cell => ({
     walls: 0,
     doors: 0,
-    oneWayDoors: 0,
-    oneWayDoorsDir: 0
+    upstair: 0,
+    downstair: 0
   }))
 )
 
@@ -113,14 +124,8 @@ onMounted(() => {
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
 
-  oneWayDoorImg.onload = () => {
-  console.log('SVG loaded OK')
+  loadAutoSave()
   draw()
-}
-
-oneWayDoorImg.onerror = (e) => {
-  console.error('SVG failed to load', e)
-}
 })
 
 function importMap(json: string): void {
@@ -134,8 +139,8 @@ function importMap(json: string): void {
 
         grid[y]![x]!.walls = src.walls ?? 0
         grid[y]![x]!.doors = src.doors ?? 0
-        grid[y]![x]!.oneWayDoors = src.oneWayDoors ?? 0
-        grid[y]![x]!.oneWayDoorsDir = src.oneWayDoorsDir ?? 0
+        grid[y]![x]!.upstair = src.upstair ?? 0
+        grid[y]![x]!.downstair = src.downstair ?? 0
       }
     }
 
@@ -145,32 +150,60 @@ function importMap(json: string): void {
   }
 }
 
-function applyTool(x: number, y: number, edge: Edge): void {
+function applyTool(x: number, y: number, edge?: Edge): void {
   const tool = props.tool
 
-  if (tool === 'wall') {
-    toggleWall(x, y, edge)
-    return
+  switch (tool) {
+    case 'wall':
+      if (edge != undefined) {
+        toggleWall(x, y, edge)
+      }
+      break
+    case 'door':
+      toggleCellObject(x, y, 'door')
+      break
+    case 'upstair':
+      toggleCellObject(x, y, 'upstair')
+      break
+    case 'downstair':
+      toggleCellObject(x, y, 'downstair')
+      break
   }
+  // if (tool === 'wall' && edge != undefined) {
+  //   toggleWall(x, y, edge)
+  //   return
+  // }
 
-  if (tool === 'door') {
-    toggleDoor(x, y, edge)
-    return
-  }
+  // if (tool === 'door') {
+  //   toggleCellObject(x, y, 'door')
+  //   return
+  // }
 
-  if (tool === 'dooroneway') {
-    cycleOneWayDoor(x, y, edge)
-    return
+}
+
+function autoSave(): void {
+  try {
+    localStorage.setItem(
+      AUTOSAVE_KEY,
+      JSON.stringify(grid)
+    )
+  } catch (e) {
+    console.error('Failed to auto-save map', e)
   }
+}
+
+function loadAutoSave(): void {
+  const json = localStorage.getItem(AUTOSAVE_KEY)
+
+  if (!json) return
+
+  importMap(json)
 }
 
 function clearEdge(x: number, y: number, edge: Edge) {
   const cell = grid[y]![x]!
 
   cell.walls &= ~edge
-  cell.doors &= ~edge
-  cell.oneWayDoors &= ~edge
-  cell.oneWayDoorsDir &= ~edge
 
   const neighbor = getNeighbor(x, y, edge)
   if (!neighbor) return
@@ -179,47 +212,6 @@ function clearEdge(x: number, y: number, edge: Edge) {
   const nCell = grid[ny]![nx]!
 
   nCell.walls &= ~opposite
-  nCell.doors &= ~opposite
-  nCell.oneWayDoors &= ~opposite
-  nCell.oneWayDoorsDir &= ~opposite
-}
-
-function cycleOneWayDoor(x: number, y: number, edge: Edge): void {
-  const cell = grid[y]![x]!
-
-  const hasDoor = cell.oneWayDoors & edge
-  const currentDir = cell.oneWayDoorsDir & edge
-
-  let nextDir: number = 0
-
-  if (edge === N || edge === S) {
-    if (!hasDoor) nextDir = S
-    else if (currentDir === S) nextDir = N
-    else nextDir = 0
-  } else {
-    if (!hasDoor) nextDir = E
-    else if (currentDir === E) nextDir = W
-    else nextDir = 0
-  }
-
-  // Remove
-  if (!nextDir) {
-    cell.oneWayDoors &= ~edge
-    cell.oneWayDoorsDir &= ~edge
-    return
-  }
-
-  if (!hasDoor) {
-    clearEdge(x, y, edge)
-  }
-
-  cell.oneWayDoors |= edge
-
-  // Clear old direction bit for this edge
-  cell.oneWayDoorsDir &= ~edge
-
-  // Set new direction
-  cell.oneWayDoorsDir |= nextDir
 }
 
 function dashedLine(x1: number, y1: number, x2: number, y2: number): void {
@@ -247,7 +239,7 @@ function draw(): void {
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      drawContent(x, y, grid[y]![x]!)
+      drawContents(x, y, grid[y]![x]!)
     }
   }
 
@@ -262,6 +254,8 @@ function draw(): void {
   if (showZoomIndicator.value) {
     drawZoomIndicator()
   }
+
+  autoSave()
 }
 
 function drawAxes(): void {
@@ -364,7 +358,7 @@ function drawGrid(): void {
   }
 }
 
-function drawContent(x: number, y: number, cell: Cell): void {
+function drawContents(x: number, y: number, cell: Cell): void {
   if (!ctx) return
 
   const px = x * tileSize
@@ -380,142 +374,45 @@ function drawContent(x: number, y: number, cell: Cell): void {
   if (cell.walls & W) line(px, py, px, py + tileSize)
 
   // Doors
-  if (cell.doors & N) drawDoor(x, y, N)
-  if (cell.doors & E) drawDoor(x, y, E)
-  if (cell.doors & S) drawDoor(x, y, S)
-  if (cell.doors & W) drawDoor(x, y, W)
-
-  // One-way Doors
-  function getDir(cell: Cell, edge: Edge): Edge | null {
-    const dir = cell.oneWayDoorsDir & (N | E | S | W)
-    return dir ? (dir as Edge) : null
+  if (cell.doors) {
+    drawCellContent(x, y, doorImg)
   }
-  if (cell.oneWayDoors & N) drawOneWayDoor(x, y, N, getDir(cell, N)!)
-  if (cell.oneWayDoors & E) drawOneWayDoor(x, y, E, getDir(cell, E)!)
-  if (cell.oneWayDoors & S) drawOneWayDoor(x, y, S, getDir(cell, S)!)
-  if (cell.oneWayDoors & W) drawOneWayDoor(x, y, W, getDir(cell, W)!)
+
+  if (cell.upstair) {
+    drawCellContent(x, y, upStairImg)
+  }
+
+  if (cell.downstair) {
+    drawCellContent(x, y, downStairImg)
+  }
 }
 
-function drawDoor(x: number, y: number, edge: Edge): void {
-  if (!ctx || !doorImg.complete) return
+function drawCellContent(x: number, y: number, img: HTMLImageElement, padding = 3): void {
+  if (!ctx || !img.complete) return
 
   const px = x * tileSize
   const py = y * tileSize
 
-  ctx.save()
+  const availableSize = tileSize - padding * 2
 
-  const isHorizontal = edge === N || edge === S
-
-  // Door size
-  const width = tileSize * 1.2
-  const height = tileSize * 0.6
-
-  // Draw edge & Move to edge center
-  if (edge === N) {
-    line(px, py, px + tileSize, py)
-    ctx.translate(px + tileSize / 2, py)
-  } 
-  if (edge === S) {
-    line(px, py + tileSize, px + tileSize, py + tileSize)
-    ctx.translate(px + tileSize / 2, py + tileSize)
-  }
-  if (edge === E) {
-    line(px + tileSize, py, px + tileSize, py + tileSize)
-    ctx.translate(px + tileSize, py + tileSize / 2)
-  }
-  if (edge === W) {
-    line(px, py, px, py + tileSize)
-    ctx.translate(px, py + tileSize / 2)
-  }
-
-  // Rotate ONLY if vertical
-  if (!isHorizontal) {
-    ctx.rotate(Math.PI / 2)
-  }
-
-  // SVG original size
-  const svgWidth = 40
-  const svgHeight = 20
-
-  const scaleX = width / svgWidth
-  const scaleY = height / svgHeight
-
-  // rectangle center in SVG space
-  const anchorX = 20
-  const anchorY = 5
-
-  // Draw
-  ctx.drawImage(
-    doorImg,
-    -anchorX * scaleX,
-    -anchorY * scaleY,
-    svgWidth * scaleX,
-    svgHeight * scaleY
+  const scale = Math.min(
+    availableSize / img.naturalWidth,
+    availableSize / img.naturalHeight
   )
 
-  ctx.restore()
-}
+  const width = img.naturalWidth * scale
+  const height = img.naturalHeight * scale
 
-function drawOneWayDoor(x: number, y: number, edge: Edge, dir: Edge): void {
-  if (!ctx || !oneWayDoorImg.complete) return
-
-  const px = x * tileSize
-  const py = y * tileSize
-
-  ctx.save()
-
-  // Draw edge & Move to edge center
-  if (edge === N) {
-    line(px, py, px + tileSize, py)
-    ctx.translate(px + tileSize / 2, py)
-  } 
-  if (edge === S) {
-    line(px, py + tileSize, px + tileSize, py + tileSize)
-    ctx.translate(px + tileSize / 2, py + tileSize)
-  }
-  if (edge === E) {
-    line(px + tileSize, py, px + tileSize, py + tileSize)
-    ctx.translate(px + tileSize, py + tileSize / 2)
-  }
-  if (edge === W) {
-    line(px, py, px, py + tileSize)
-    ctx.translate(px, py + tileSize / 2)
-  }
-
-  // Rotate based on direction (SVG default = facing South)
-  const rotationMap = {
-    [N]: Math.PI,
-    [S]: 0,
-    [E]: Math.PI / 2,
-    [W]: -Math.PI / 2
-  }
-
-  ctx.rotate(rotationMap[dir])
-
-  // Scale to fit tile nicely
-  const width = tileSize * 1.2
-  const height = tileSize * 0.6
-
-  const svgWidth = 40
-  const svgHeight = 20
-
-  // scale factors
-  const scaleX = width / svgWidth
-  const scaleY = height / svgHeight
-
-  // rectangle center in SVG space
-  const anchorX = 20
-  const anchorY = 5
+  const drawX = px + (tileSize - width) / 2
+  const drawY = py + (tileSize - height) / 2
 
   ctx.drawImage(
-    oneWayDoorImg,
-    -anchorX * scaleX,
-    -anchorY * scaleY,
+    img,
+    drawX,
+    drawY,
     width,
     height
   )
-
-  ctx.restore()
 }
 
 function drawZoomIndicator(): void {
@@ -580,32 +477,51 @@ function handleClick(e: MouseEvent): void {
   const gridX = Math.floor(x / tileSize)
   const gridY = Math.floor(y / tileSize)
 
-  const localX = x % tileSize
-  const localY = y % tileSize
-
-  const distances = [
-  { edge: N, value: localY },
-  { edge: S, value: tileSize - localY },
-  { edge: W, value: localX },
-  { edge: E, value: tileSize - localX }
-]
+  const tool = props.tool
 
   // Find closest edge
-  const closest = distances.reduce((a, b) =>
-    a.value < b.value ? a : b
-  )
+  if (tool === "wall") {
+    const localX = x % tileSize
+    const localY = y % tileSize
 
-  const margin = tileSize * 0.25
+    const distances = [
+      { edge: N, value: localY },
+      { edge: S, value: tileSize - localY },
+      { edge: W, value: localX },
+      { edge: E, value: tileSize - localX }
+    ]
 
-  if (closest.value > margin) return
+    const closest = distances.reduce((a, b) =>
+      a.value < b.value ? a : b
+    )
 
-  const edge = closest.edge
+    const margin = tileSize * 0.25
 
-  let { x: nx, y: ny, edge: ne } = normalizeEdge(gridX, gridY, edge)
-  if (nx < 0 || ny < 0 || nx >= size || ny >= size) return
+    if (closest.value > margin) return
+    let { x: nx, y: ny, edge: ne } = normalizeEdge(gridX, gridY, closest.edge)
+    if (nx < 0 || ny < 0 || nx >= size || ny >= size) return
 
-  applyTool(nx, ny, ne)
-  draw()
+    applyTool(nx, ny, ne)
+    draw()
+    return
+  }
+  
+  // Find closest cell
+  if (tool === "door" || tool === "upstair" || tool === "downstair") {
+    if (
+      gridX < 0 ||
+      gridY < 0 ||
+      gridX >= size ||
+      gridY >= size
+    ) {
+      return
+    }
+
+    applyTool(gridX, gridY)
+    draw()
+    return
+  }
+  
 }
 
 function handleMouseDown(e: MouseEvent) {
@@ -696,16 +612,22 @@ function screenToWorld(mx: number, my: number) {
   return { x, y }
 }
 
-function toggleDoor(x: number, y: number, edge: Edge): void {
-  const cell = grid[y]![x]!
-
-  if (cell.doors & edge) {
-    clearEdge(x, y, edge)
-    return
-  }
-
-  clearEdge(x, y, edge)
-  cell.doors |= edge
+function toggleCellObject(
+  x: number, 
+  y: number, 
+  object: "door" | "upstair" | "downstair"): void {
+    const cell = grid[y]![x]!
+    switch (object) {
+      case "door":
+        cell.doors = 1 - cell.doors
+        break
+      case "upstair":
+        cell.upstair = 1 - cell.upstair
+        break
+      case "downstair":
+        cell.downstair = 1 - cell.downstair
+        break
+    }
 }
 
 function toggleWall(x: number, y: number, edge: Edge): void {
