@@ -6,7 +6,7 @@
   import downStairIcon from '@/assets/legend/downstair.svg?url'
   import upStairIcon from '@/assets/legend/upstair.svg?url'
 
-  type Tool = 'wall' | 'door' | 'downstair' | 'upstair'
+  type Tool = 'wall' | 'door' | 'downstair' | 'upstair' | 'walkable'
 
   const emit = defineEmits<{
     (e: 'changeTool', tool: Tool): void
@@ -39,6 +39,14 @@
       <div class="section-title">Cell</div>
 
       <div class="grid">
+        <button
+          :class="{ active: props.tool === 'walkable' }"
+          @click="emit('changeTool', 'walkable')"
+        >
+          <span class="walkable-icon"></span>
+          <span>Walkable Area</span>
+        </button>
+
         <button 
           :class="{ active: props.tool === 'door' }"
           @click="emit('changeTool', 'door')"
@@ -97,6 +105,14 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
+}
+
+.walkable-icon {
+  width: 28px;
+  height: 28px;
+  background-color: aliceblue;
+  border: 1px solid #aaa;
+  border-radius: 3px;
 }
 
 /* Tool button */

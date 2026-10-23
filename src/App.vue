@@ -1,16 +1,35 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, toRaw } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import DungeonCanvas from './components/DungeonCanvas.vue'
 import HeaderBar from './components/HeadBar.vue'
 
-type Tool = 'wall' | 'door' | 'downstair' | 'upstair'
+type Tool = 'wall' | 'door' | 'downstair' | 'upstair' | "walkable"
 const currentTool = ref<Tool>('wall')
 
 const canvasRef = ref<InstanceType<typeof DungeonCanvas> | null>(null)
 
+function newMap () {
+  canvasRef.value?.newMap()
+}
+
 function exportMap() {
   return canvasRef.value?.exportMap() ?? ''
+}
+
+function exportSvg(
+  exportIcons: boolean,
+  lineColor: string,
+  fillColor: string
+): string {
+  if (!canvasRef.value) {
+    throw new Error('Canvas reference is not available')
+  }
+  return canvasRef.value.exportSVG(
+    exportIcons,
+    lineColor,
+    fillColor
+  )
 }
 
 function importMap(json: string) {
@@ -23,6 +42,8 @@ function importMap(json: string) {
     <HeaderBar
       :exportMap="exportMap"
       :importMap="importMap"
+      :newMap="newMap"
+      :exportSvg="exportSvg"
     />
     <div class="main">
       <Sidebar 

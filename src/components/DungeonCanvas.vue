@@ -3,7 +3,7 @@
   ref="canvas" 
   :width="canvasSize" 
   :height="canvasSize"
-  style="background-color: aliceblue;"
+  style="background-color: #d3d8dd;"
   @click="handleClick"
   @wheel="handleWheel"
   @mousedown="handleMouseDown"
@@ -18,9 +18,14 @@ import { ref, onMounted } from 'vue'
 import doorClosedIcon from '@/assets/legend/doorclosed.svg?url'
 import downStairIcon from '@/assets/legend/downstair.svg?url'
 import upStairIcon from '@/assets/legend/upstair.svg?url'
+import doorClosedSvg from '@/assets/legend/doorclosed.svg?raw'
+import downStairSvg from '@/assets/legend/downstair.svg?raw'
+import upStairSvg from '@/assets/legend/upstair.svg?raw'
 defineExpose({
+  newMap,
   exportMap,
-  importMap
+  importMap,
+  exportSVG
 })
 
 //////////////////////////
@@ -39,7 +44,7 @@ const E = 2 as const
 const S = 4 as const
 const W = 8 as const
 const props = defineProps<{
-  tool: 'wall' | 'door' | 'downstair' | 'upstair'
+  tool: 'wall' | 'door' | 'downstair' | 'upstair' | 'walkable'
 }>()
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
@@ -55,6 +60,7 @@ type Cell = {
   doors: number             // 0: No door | 1: Door closed
   upstair: number           // 0: No upstair | 1: Upstair
   downstair: number         // 0: No downstair | 1: Downstair
+  walkable: boolean
 }
 
 const AUTOSAVE_KEY = 'map-autosave'
@@ -103,7 +109,8 @@ const grid: Cell[][] = Array.from({ length: size }, () =>
     walls: 0,
     doors: 0,
     upstair: 0,
-    downstair: 0
+    downstair: 0,
+    walkable: false
   }))
 )
 
@@ -128,28 +135,6 @@ onMounted(() => {
   draw()
 })
 
-function importMap(json: string): void {
-  try {
-    const data = JSON.parse(json)
-
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const src = data[y]?.[x]
-        if (!src) continue
-
-        grid[y]![x]!.walls = src.walls ?? 0
-        grid[y]![x]!.doors = src.doors ?? 0
-        grid[y]![x]!.upstair = src.upstair ?? 0
-        grid[y]![x]!.downstair = src.downstair ?? 0
-      }
-    }
-
-    draw()
-  } catch (e) {
-    console.error('Invalid map JSON', e)
-  }
-}
-
 function applyTool(x: number, y: number, edge?: Edge): void {
   const tool = props.tool
 
@@ -168,17 +153,10 @@ function applyTool(x: number, y: number, edge?: Edge): void {
     case 'downstair':
       toggleCellObject(x, y, 'downstair')
       break
+    case "walkable":
+      grid[y]![x]!.walkable = !grid[y]![x]!.walkable
+      break
   }
-  // if (tool === 'wall' && edge != undefined) {
-  //   toggleWall(x, y, edge)
-  //   return
-  // }
-
-  // if (tool === 'door') {
-  //   toggleCellObject(x, y, 'door')
-  //   return
-  // }
-
 }
 
 function autoSave(): void {
@@ -190,14 +168,6 @@ function autoSave(): void {
   } catch (e) {
     console.error('Failed to auto-save map', e)
   }
-}
-
-function loadAutoSave(): void {
-  const json = localStorage.getItem(AUTOSAVE_KEY)
-
-  if (!json) return
-
-  importMap(json)
 }
 
 function clearEdge(x: number, y: number, edge: Edge) {
@@ -361,6 +331,16 @@ function drawGrid(): void {
 function drawContents(x: number, y: number, cell: Cell): void {
   if (!ctx) return
 
+  if (cell.walkable) {
+  ctx.fillStyle = 'aliceblue'
+  ctx.fillRect(
+    x * tileSize,
+    y * tileSize,
+    tileSize,
+    tileSize
+  )
+}
+
   const px = x * tileSize
   const py = y * tileSize
 
@@ -444,8 +424,147 @@ function drawZoomIndicator(): void {
   ctx.fillText(`${percent}%`, x + boxWidth / 2, y + boxHeight / 2)
 }
 
+function embedSvgIcon(
+  svgText: string,
+  x: number,
+  y: number,
+  padding = 3
+): string {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(svgText, 'image/svg+xml')
+
+  if (doc.querySelector('parsererror')) {
+    throw new Error('Invalid SVG icon')
+  }
+
+  const svg = doc.documentElement
+  const viewBox = svg.getAttribute('viewBox') ?? '0 0 512 512'
+  const values = viewBox.split(/[\s,]+/).map(Number)
+
+  const width = values[2]!
+  const height = values[3]!
+  const available = tileSize - padding * 2
+  const factor = Math.min(available / width, available / height)
+
+  const iconWidth = width * factor
+  const iconHeight = height * factor
+
+  svg.setAttribute('x', String(x + (tileSize - iconWidth) / 2))
+  svg.setAttribute('y', String(y + (tileSize - iconHeight) / 2))
+  svg.setAttribute('width', String(iconWidth))
+  svg.setAttribute('height', String(iconHeight))
+
+  return new XMLSerializer().serializeToString(svg)
+}
+
 function exportMap(): string {
   return JSON.stringify(grid)
+}
+
+function exportSVG(
+  exportIcons: boolean,
+  lineColor: string,
+  fillColor: string
+): string {
+  const dimension = size * tileSize
+  const elements: string[] = []
+
+  const walkableCells: string[] = []
+  const walls: string[] = []
+  const icons: string[] = []
+  const seen = new Set<string>()
+
+  const line = (x1: number, y1: number, x2: number, y2: number) =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`
+
+  const addWall = (
+    key: string,
+    x1: number, y1: number,
+    x2: number, y2: number
+  ) => {
+    if (seen.has(key)) return
+    seen.add(key)
+    walls.push(line(x1, y1, x2, y2))
+  }
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const cell = grid[y]![x]!
+      const px = x * tileSize
+      const py = y * tileSize
+
+      // Walkable area
+      if (cell.walkable) {
+        walkableCells.push(
+          `<rect x="${px}" y="${py}" ` +
+          `width="${tileSize}" height="${tileSize}" />`
+        )
+      }
+
+      // Walls
+      if (cell.walls & N)
+        addWall(`h-${x}-${y}`, px, py, px + tileSize, py)
+
+      if (cell.walls & S)
+        addWall(`h-${x}-${y + 1}`, px, py + tileSize, px + tileSize, py + tileSize)
+
+      if (cell.walls & W)
+        addWall(`v-${x}-${y}`, px, py, px, py + tileSize)
+
+      if (cell.walls & E)
+        addWall(`v-${x + 1}-${y}`, px + tileSize, py, px + tileSize, py + tileSize)
+
+      // Icons
+      if (exportIcons) {
+        if (cell.doors) {
+          icons.push(
+            embedSvgIcon(doorClosedSvg, px, py)
+          )
+        }
+        if (cell.upstair) {
+          icons.push(
+            embedSvgIcon(upStairSvg, px, py)
+          )
+        }
+        if (cell.downstair) {
+          icons.push(
+            embedSvgIcon(downStairSvg, px, py)
+          )
+        }
+      }
+    }
+  }
+
+  // Walkable areas (bottom layer)
+  elements.push(
+    `<g id="walkable" fill="${fillColor}" stroke="none">`,
+    ...walkableCells,
+    `</g>`
+  )
+
+  // Walls (middle layer)
+  elements.push(
+    `<g id="walls" fill="none" stroke="${lineColor}" stroke-width="2">`,
+    ...walls,
+    `</g>`
+  )
+
+  // Icons (top layer)
+  if (exportIcons) {
+    elements.push(
+      `<g id="icons">`,
+      ...icons,
+      `</g>`
+    )
+  }
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg"`,
+    ` width="${dimension}" height="${dimension}"`,
+    ` viewBox="0 0 ${dimension} ${dimension}">`,
+    ...elements,
+    `</svg>`
+  ].join('\n')
 }
 
 function getNeighbor(
@@ -507,7 +626,12 @@ function handleClick(e: MouseEvent): void {
   }
   
   // Find closest cell
-  if (tool === "door" || tool === "upstair" || tool === "downstair") {
+  if (
+    tool === "door" || 
+    tool === "upstair" || 
+    tool === "downstair" || 
+    tool === "walkable"
+  ) {
     if (
       gridX < 0 ||
       gridY < 0 ||
@@ -591,6 +715,37 @@ function handleWheel(e: WheelEvent) {
   draw()
 }
 
+function importMap(json: string): void {
+  try {
+    const data = JSON.parse(json)
+
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const src = data[y]?.[x]
+        if (!src) continue
+
+        grid[y]![x]!.walls = src.walls ?? 0
+        grid[y]![x]!.doors = src.doors ?? 0
+        grid[y]![x]!.upstair = src.upstair ?? 0
+        grid[y]![x]!.downstair = src.downstair ?? 0
+        grid[y]![x]!.walkable = src.walkable ?? false
+      }
+    }
+
+    draw()
+  } catch (e) {
+    console.error('Invalid map JSON', e)
+  }
+}
+
+function loadAutoSave(): void {
+  const json = localStorage.getItem(AUTOSAVE_KEY)
+
+  if (!json) return
+
+  importMap(json)
+}
+
 function line(x1: number, y1: number, x2: number, y2: number): void {
   if (!ctx) return
 
@@ -598,6 +753,20 @@ function line(x1: number, y1: number, x2: number, y2: number): void {
   ctx.moveTo(x1, y1)
   ctx.lineTo(x2, y2)
   ctx.stroke()
+}
+
+function newMap(): void {
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      grid[y]![x]!.walls = 0
+      grid[y]![x]!.doors = 0
+      grid[y]![x]!.upstair = 0
+      grid[y]![x]!.downstair = 0
+      grid[y]![x]!.walkable = false
+    }
+  }
+  localStorage.removeItem(AUTOSAVE_KEY)
+  draw()
 }
 
 function normalizeEdge(x: number, y: number, edge: Edge) {
@@ -653,7 +822,6 @@ function toggleWall(x: number, y: number, edge: Edge): void {
     neighborCell.walls &= ~opposite
   }
 }
-
 
 </script>
 
