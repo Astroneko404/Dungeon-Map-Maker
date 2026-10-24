@@ -9,19 +9,31 @@
         placeholder="Map name..."
     />
 
-    <button @click="newFile">
+    <button 
+      @click="newFile"
+      title="Create a new map"
+    >
         <img :src="newIcon" />
     </button>
 
-    <button @click="openFile">
+    <button 
+      @click="openFile"
+      title="Open an existing map"
+    >
         <img :src="openIcon" />
     </button>
 
-    <button @click="saveFile">
+    <button 
+      @click="saveFile"
+      title="Save a local copy of the map (JSON)"
+    >
         <img :src="saveIcon" />
     </button>
 
-    <button @click="openExportDialog">
+    <button 
+      @click="openExportDialog"
+      title="Export the current map as SVG"
+    >
         <img :src="exportIcon" />
     </button>
 
