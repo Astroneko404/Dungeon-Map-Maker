@@ -428,6 +428,7 @@ function embedSvgIcon(
   svgText: string,
   x: number,
   y: number,
+  color: string,
   padding = 3
 ): string {
   const parser = new DOMParser()
@@ -454,6 +455,25 @@ function embedSvgIcon(
   svg.setAttribute('width', String(iconWidth))
   svg.setAttribute('height', String(iconHeight))
 
+  svg.querySelectorAll('*').forEach(element => {
+    if (element.hasAttribute('fill')) {
+      const fill = element.getAttribute('fill')
+      if (fill !== 'none') {
+        element.setAttribute('fill', color)
+      }
+    }
+
+    if (element.hasAttribute('stroke')) {
+      const stroke = element.getAttribute('stroke')
+      if (stroke !== 'none') {
+        element.setAttribute('stroke', color)
+      }
+    }
+  })
+
+  svg.setAttribute('fill', color)
+  svg.setAttribute('stroke', color)
+
   return new XMLSerializer().serializeToString(svg)
 }
 
@@ -462,12 +482,18 @@ function exportMap(): string {
 }
 
 function exportSVG(
-  exportIcons: boolean,
+  includeIcon: boolean,
+  includeTitle: boolean,
+  mapTitle: string,
   lineColor: string,
   fillColor: string
 ): string {
   const dimension = size * tileSize
   const elements: string[] = []
+
+  const showTitle = includeTitle && mapTitle.length > 0
+  const titleHeight = showTitle ? 60 : 0
+  const svgHeight = dimension + titleHeight
 
   const walkableCells: string[] = []
   const walls: string[] = []
@@ -515,20 +541,20 @@ function exportSVG(
         addWall(`v-${x + 1}-${y}`, px + tileSize, py, px + tileSize, py + tileSize)
 
       // Icons
-      if (exportIcons) {
+      if (includeIcon) {
         if (cell.doors) {
           icons.push(
-            embedSvgIcon(doorClosedSvg, px, py)
+            embedSvgIcon(doorClosedSvg, px, py, lineColor)
           )
         }
         if (cell.upstair) {
           icons.push(
-            embedSvgIcon(upStairSvg, px, py)
+            embedSvgIcon(upStairSvg, px, py, lineColor)
           )
         }
         if (cell.downstair) {
           icons.push(
-            embedSvgIcon(downStairSvg, px, py)
+            embedSvgIcon(downStairSvg, px, py, lineColor)
           )
         }
       }
@@ -550,7 +576,7 @@ function exportSVG(
   )
 
   // Icons (top layer)
-  if (exportIcons) {
+  if (includeIcon) {
     elements.push(
       `<g id="icons">`,
       ...icons,
@@ -558,11 +584,35 @@ function exportSVG(
     )
   }
 
+  const escapeXml = (text: string) =>
+    text.replace(/[&<>"']/g, char => {
+      const entities: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&apos;'
+      }
+      return entities[char] ?? char
+    })
+
+  const titleElement = showTitle
+    ? `<text x="${dimension / 2}" y="38"
+        text-anchor="middle"
+        font-family="Arial, sans-serif"
+        font-size="24"
+        font-weight="bold"
+        fill="${lineColor}">${escapeXml(mapTitle)}</text>`
+    : ''
+
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"`,
-    ` width="${dimension}" height="${dimension}"`,
-    ` viewBox="0 0 ${dimension} ${dimension}">`,
+    ` width="${dimension}" height="${svgHeight}"`,
+    ` viewBox="0 0 ${dimension} ${svgHeight}">`,
+    titleElement,
+    `<g transform="translate(0, ${titleHeight})">`,
     ...elements,
+    `</g>`,
     `</svg>`
   ].join('\n')
 }

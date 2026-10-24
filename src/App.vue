@@ -18,7 +18,9 @@ function exportMap() {
 }
 
 function exportSvg(
-  exportIcons: boolean,
+  includeIcon: boolean,
+  includeTitle: boolean,
+  mapTitle: string,
   lineColor: string,
   fillColor: string
 ): string {
@@ -26,7 +28,9 @@ function exportSvg(
     throw new Error('Canvas reference is not available')
   }
   return canvasRef.value.exportSVG(
-    exportIcons,
+    includeIcon,
+    includeTitle,
+    mapTitle,
     lineColor,
     fillColor
   )

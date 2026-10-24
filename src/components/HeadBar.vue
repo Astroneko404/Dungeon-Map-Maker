@@ -37,49 +37,41 @@
   </div>
 
   <dialog ref="exportDialog">
-  <h3>Export SVG</h3>
+    <h3>Export SVG</h3>
 
-  <label>
-    <input
-      type="radio"
-      v-model="exportMode"
-      value="walls"
-    />
-    Do not include icons
-  </label>
+    <div class="export-section">
+      <h4>Layout</h4>
+      <label>
+        <input type="checkbox" v-model="includeIcon" />
+        Include icons
+      </label>
+      <label>
+        <input type="checkbox" v-model="includeTitle" />
+        Include the title
+      </label>
+    </div>
 
-  <label>
-    <input
-      type="radio"
-      v-model="exportMode"
-      value="all"
-    />
-    Include icons
-  </label>
+    <div class="export-section">
+      <h4>Colors</h4>
 
-  <div class="export-colors">
-    <label>
-      Wall / line color
-      <input
-        type="color"
-        v-model="lineColor"
-      />
-    </label>
+      <div class="export-colors">
+        <label>
+          Wall / line color
+          <input type="color" v-model="lineColor" />
+        </label>
 
-    <label>
-      Walkable area color
-      <input
-        type="color"
-        v-model="fillColor"
-      />
-    </label>
-  </div>
+        <label>
+          Walkable area color
+          <input type="color" v-model="fillColor" />
+        </label>
+      </div>
+    </div>
 
-  <div class="dialog-actions">
-    <button @click="closeExportDialog">Cancel</button>
-    <button @click="exportSvg">Export</button>
-  </div>
-</dialog>
+    <div class="dialog-actions">
+      <button @click="closeExportDialog">Cancel</button>
+      <button @click="exportSvg">Export</button>
+    </div>
+  </dialog>
 </template>
 
 <script setup lang="ts">
@@ -99,14 +91,17 @@ const props = defineProps<{
   importMap: (json: string) => void
   newMap: () => void
   exportSvg: (
-    includeIcons: boolean,
+    includeIcon: boolean,
+    includeTitle: boolean,
+    mapTitle: string,
     lineColor: string,
     fillColor: string
   ) => string
 }>()
 
 const exportDialog = ref<HTMLDialogElement | null>(null)
-const exportMode = ref<'walls' | 'all'>('all')
+const includeIcon = ref(true)
+const includeTitle = ref(true)
 
 function openExportDialog() {
   exportDialog.value?.showModal()
@@ -119,7 +114,9 @@ function closeExportDialog() {
 function exportSvg() {
   try {
     const svg = props.exportSvg(
-      exportMode.value === 'all',
+      includeIcon.value,
+      includeTitle.value,
+      mapName.value.trim(),
       lineColor.value,
       fillColor.value
     )
@@ -312,5 +309,34 @@ dialog label {
   min-width: 80px;
   padding: 8px 16px;
   white-space: nowrap;
+}
+
+.export-dialog {
+  min-width: 340px;
+}
+
+.export-dialog h3 {
+  margin: 0 0 16px;
+}
+
+.export-section {
+  padding: 14px 0;
+  border-top: 1px solid #444;
+}
+
+.export-section h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.export-section label {
+  margin: 8px 0;
+}
+
+.export-section input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #8caaff;
 }
 </style>
