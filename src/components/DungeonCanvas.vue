@@ -1,20 +1,32 @@
 <template>
+  <div @click="contextMenu.visible = false"></div>
   <canvas 
   ref="canvas" 
-  :width="canvasSize" 
-  :height="canvasSize"
+  :width="canvasWidth" 
+  :height="canvasHeight"
   style="background-color: #d3d8dd;"
   @click="handleClick"
+  @contextmenu.prevent.stop="openContextMenu"
   @wheel="handleWheel"
   @mousedown="handleMouseDown"
   @mousemove="handleMouseMove"
   @mouseup="handleMouseUp"
   @mouseleave="handleMouseUp"
   />
+  <ContextMenu
+    v-if="contextMenu.visible"
+    :x="contextMenu.x"
+    :y="contextMenu.y"
+    :can-remove-column="cols > 1"
+    :can-remove-row="rows > 1"
+    @select="resizeMap"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, reactive, computed, nextTick } from 'vue'
+import ContextMenu from './ContextMenu.vue'
+import type { ResizeAction } from './ContextMenu.vue'
 import doorClosedIcon from '@/assets/legend/doorclosed.svg?url'
 import downStairIcon from '@/assets/legend/downstair.svg?url'
 import upStairIcon from '@/assets/legend/upstair.svg?url'
@@ -31,12 +43,18 @@ defineExpose({
 //////////////////////////
 // Constants and Types
 //////////////////////////
-const size = 20 // Default 20
+const rows = ref(20)
+const cols = ref(20)
 const tileSize = 32
 const axisPadding = 24
 const zoomMin = 0.7
 const zoomMax = 2.0
-const canvasSize = size * tileSize + axisPadding * 2
+const canvasWidth = computed(
+  () => cols.value * tileSize + axisPadding * 2
+)
+const canvasHeight = computed(
+  () => rows.value * tileSize + axisPadding * 2
+)
 const axisOffsetX = axisPadding
 const axisOffsetY = axisPadding
 const N = 1 as const
@@ -104,8 +122,8 @@ upStairImg.src = upStairIcon
 const canvas = ref<HTMLCanvasElement | null>(null)
 let ctx: CanvasRenderingContext2D | null = null
 
-const grid: Cell[][] = Array.from({ length: size }, () =>
-  Array.from({ length: size }, (): Cell => ({
+const grid: Cell[][] = Array.from({ length: rows.value }, () =>
+  Array.from({ length: cols.value }, (): Cell => ({
     walls: 0,
     doors: 0,
     upstair: 0,
@@ -114,6 +132,12 @@ const grid: Cell[][] = Array.from({ length: size }, () =>
   }))
 )
 
+const contextMenu = reactive({
+  visible: false,
+  x: 0,
+  y: 0
+})
+
 onMounted(() => {
   if (!canvas.value) return
   const context = canvas.value.getContext('2d')
@@ -121,18 +145,14 @@ onMounted(() => {
 
   ctx = context
 
-  const dpr = window.devicePixelRatio || 1
-  canvas.value.width = canvasSize * dpr
-  canvas.value.height = canvasSize * dpr
-  canvas.value.style.width = `${canvasSize}px`
-  canvas.value.style.height = `${canvasSize}px`
-  
-  ctx.scale(dpr, dpr)
-  ctx.imageSmoothingEnabled = true
-  ctx.imageSmoothingQuality = 'high'
-
+  window.addEventListener('pointerdown', handleGlobalPointerDown)
+  resizeCanvasBackingStore()
   loadAutoSave()
   draw()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('pointerdown', handleGlobalPointerDown)
 })
 
 function applyTool(x: number, y: number, edge?: Edge): void {
@@ -184,6 +204,16 @@ function clearEdge(x: number, y: number, edge: Edge) {
   nCell.walls &= ~opposite
 }
 
+function createEmptyCell(): Cell {
+  return {
+    walls: 0,
+    doors: 0,
+    upstair: 0,
+    downstair: 0,
+    walkable: false
+  }
+}
+
 function dashedLine(x1: number, y1: number, x2: number, y2: number): void {
   if (!ctx) return
 
@@ -198,7 +228,7 @@ function dashedLine(x1: number, y1: number, x2: number, y2: number): void {
 function draw(): void {
   if (!ctx) return
 
-  ctx.clearRect(0, 0, canvasSize, canvasSize)
+  ctx.clearRect(0, 0, canvasWidth.value, canvasHeight.value)
 
   // Grid & Objects
   ctx.save()
@@ -207,8 +237,8 @@ function draw(): void {
   ctx.translate(axisOffsetX, axisOffsetY)
   drawGrid()
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  for (let y = 0; y < rows.value; y++) {
+    for (let x = 0; x < cols.value; x++) {
       drawContents(x, y, grid[y]![x]!)
     }
   }
@@ -243,24 +273,24 @@ function drawAxes(): void {
   ctx.textBaseline = 'middle'
 
   // --- X AXIS ---
-  for (let x = 0; x < size; x++) {
+  for (let x = 0; x < cols.value; x++) {
     const centerX =
       (x * tileSize + tileSize / 2 + axisOffsetX) * scale.value +
       offset.value.x
 
-    if (centerX < 0 || centerX > canvasSize) continue
+    if (centerX < 0 || centerX > canvasWidth.value) continue
 
     // Labels
     ctx.fillText(String(x), centerX, padding)
-    ctx.fillText(String(x), centerX, canvasSize - padding)
+    ctx.fillText(String(x), centerX, canvasHeight.value - padding)
   }
 
   // Vertical separators (edges)
-  for (let x = 0; x <= size; x++) {
+  for (let x = 0; x <= cols.value; x++) {
     const edgeX =
       (x * tileSize + axisOffsetX) * scale.value + offset.value.x
 
-    if (edgeX < 0 || edgeX > canvasSize) continue
+    if (edgeX < 0 || edgeX > canvasWidth.value) continue
 
     // Top ticks
     ctx.beginPath()
@@ -270,32 +300,32 @@ function drawAxes(): void {
 
     // Bottom ticks
     ctx.beginPath()
-    ctx.moveTo(edgeX, canvasSize - padding - tickSize)
-    ctx.lineTo(edgeX, canvasSize - padding + tickSize)
+    ctx.moveTo(edgeX, canvasHeight.value - padding - tickSize)
+    ctx.lineTo(edgeX, canvasHeight.value - padding + tickSize)
     ctx.stroke()
   }
 
   // --- Y AXIS ---
-  for (let y = 0; y < size; y++) {
+  for (let y = 0; y < rows.value; y++) {
     const centerY =
       (y * tileSize + tileSize / 2 + axisOffsetY) * scale.value +
       offset.value.y
 
-    if (centerY < 0 || centerY > canvasSize) continue
+    if (centerY < 0 || centerY > canvasHeight.value) continue
 
-    const displayY = size - 1 - y
+    const displayY = rows.value - 1 - y
 
     // Labels
     ctx.fillText(String(displayY), padding, centerY)
-    ctx.fillText(String(displayY), canvasSize - padding, centerY)
+    ctx.fillText(String(displayY), canvasWidth.value - padding, centerY)
   }
 
   // Horizontal separators (edges)
-  for (let y = 0; y <= size; y++) {
+  for (let y = 0; y <= rows.value; y++) {
     const edgeY =
       (y * tileSize + axisOffsetY) * scale.value + offset.value.y
 
-    if (edgeY < 0 || edgeY > canvasSize) continue
+    if (edgeY < 0 || edgeY > canvasHeight.value) continue
 
     // Left ticks
     ctx.beginPath()
@@ -305,8 +335,8 @@ function drawAxes(): void {
 
     // Right ticks
     ctx.beginPath()
-    ctx.moveTo(canvasSize - padding - tickSize, edgeY)
-    ctx.lineTo(canvasSize - padding + tickSize, edgeY)
+    ctx.moveTo(canvasWidth.value - padding - tickSize, edgeY)
+    ctx.lineTo(canvasWidth.value - padding + tickSize, edgeY)
     ctx.stroke()
   }
 }
@@ -316,8 +346,8 @@ function drawGrid(): void {
 
   ctx.strokeStyle = '#bbb'
   ctx.lineWidth = 1
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  for (let y = 0; y < rows.value; y++) {
+    for (let x = 0; x < cols.value; x++) {
       const px = x * tileSize
       const py = y * tileSize
       dashedLine(px, py, px + tileSize, py) // N
@@ -402,8 +432,8 @@ function drawZoomIndicator(): void {
   const boxWidth = 80
   const boxHeight = 24
 
-  const x = canvasSize - boxWidth - padding
-  const y = canvasSize - boxHeight - padding
+  const x = canvasWidth.value - boxWidth - padding
+  const y = canvasHeight.value - boxHeight - padding
 
   // Background
   ctx.fillStyle = 'white'
@@ -488,12 +518,13 @@ function exportSVG(
   lineColor: string,
   fillColor: string
 ): string {
-  const dimension = size * tileSize
+  const mapWidth = cols.value * tileSize
+  const mapHeight = rows.value * tileSize
   const elements: string[] = []
 
   const showTitle = includeTitle && mapTitle.length > 0
   const titleHeight = showTitle ? 60 : 0
-  const svgHeight = dimension + titleHeight
+  const svgHeight = mapHeight + titleHeight
 
   const walkableCells: string[] = []
   const walls: string[] = []
@@ -513,8 +544,8 @@ function exportSVG(
     walls.push(line(x1, y1, x2, y2))
   }
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  for (let y = 0; y < rows.value; y++) {
+    for (let x = 0; x < cols.value; x++) {
       const cell = grid[y]![x]!
       const px = x * tileSize
       const py = y * tileSize
@@ -597,7 +628,7 @@ function exportSVG(
     })
 
   const titleElement = showTitle
-    ? `<text x="${dimension / 2}" y="38"
+    ? `<text x="${mapWidth / 2}" y="38"
         text-anchor="middle"
         font-family="Arial, sans-serif"
         font-size="24"
@@ -607,8 +638,8 @@ function exportSVG(
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"`,
-    ` width="${dimension}" height="${svgHeight}"`,
-    ` viewBox="0 0 ${dimension} ${svgHeight}">`,
+    ` width="${mapWidth}" height="${svgHeight}"`,
+    ` viewBox="0 0 ${mapWidth} ${svgHeight}">`,
     titleElement,
     `<g transform="translate(0, ${titleHeight})">`,
     ...elements,
@@ -623,8 +654,8 @@ function getNeighbor(
   edge: Edge
 ): { nx: number; ny: number; opposite: Edge } | null {
   if (edge === N && y > 0) return { nx: x, ny: y - 1, opposite: S }
-  if (edge === E && x < size - 1) return { nx: x + 1, ny: y, opposite: W }
-  if (edge === S && y < size - 1) return { nx: x, ny: y + 1, opposite: N }
+  if (edge === E && x < cols.value - 1) return { nx: x + 1, ny: y, opposite: W }
+  if (edge === S && y < rows.value - 1) return { nx: x, ny: y + 1, opposite: N }
   if (edge === W && x > 0) return { nx: x - 1, ny: y, opposite: E }
 
   return null
@@ -633,6 +664,10 @@ function getNeighbor(
 function handleClick(e: MouseEvent): void {
   if (hasDragged) return
   if (!canvas.value) return
+  if (contextMenu.visible) {
+    contextMenu.visible = false
+    return
+  }
 
   const rect = canvas.value.getBoundingClientRect()
 
@@ -668,7 +703,7 @@ function handleClick(e: MouseEvent): void {
 
     if (closest.value > margin) return
     let { x: nx, y: ny, edge: ne } = normalizeEdge(gridX, gridY, closest.edge)
-    if (nx < 0 || ny < 0 || nx >= size || ny >= size) return
+    if (nx < 0 || ny < 0 || nx >= cols.value || ny >= rows.value) return
 
     applyTool(nx, ny, ne)
     draw()
@@ -685,8 +720,8 @@ function handleClick(e: MouseEvent): void {
     if (
       gridX < 0 ||
       gridY < 0 ||
-      gridX >= size ||
-      gridY >= size
+      gridX >= cols.value ||
+      gridY >= rows.value
     ) {
       return
     }
@@ -698,10 +733,29 @@ function handleClick(e: MouseEvent): void {
   
 }
 
-function handleMouseDown(e: MouseEvent) {
+function handleGlobalPointerDown(event: PointerEvent): void {
+  if (event.button !== 0) return
+
+  const target = event.target
+  if (!(target instanceof Node)) return
+
+  // Execute context menu actions
+  if (target instanceof Element && target.closest('.context-menu')) {
+    return
+  }
+  if (target === canvas.value) {
+    return
+  }
+  contextMenu.visible = false
+}
+
+function handleMouseDown(event: MouseEvent) {
+  if (event.button === 0 && contextMenu.visible) {
+    return
+  }
   isDragging.value = true
   hasDragged = false
-  lastMouse = { x: e.clientX, y: e.clientY }
+  lastMouse = { x: event.clientX, y: event.clientY }
 }
 
 function handleMouseMove(e: MouseEvent) {
@@ -726,19 +780,19 @@ function handleMouseUp() {
   isDragging.value = false
 }
 
-function handleWheel(e: WheelEvent) {
-  e.preventDefault()
+function handleWheel(event: WheelEvent) {
+  event.preventDefault()
 
   const zoomFactor = 1.1
   const rect = canvas.value!.getBoundingClientRect()
 
-  const mouseX = e.clientX - rect.left
-  const mouseY = e.clientY - rect.top
+  const mouseX = event.clientX - rect.left
+  const mouseY = event.clientY - rect.top
 
   const worldBefore = screenToWorld(mouseX, mouseY)
   let newScale = scale.value
 
-  if (e.deltaY < 0) {
+  if (event.deltaY < 0) {
     newScale *= zoomFactor
   } else {
     newScale /= zoomFactor
@@ -767,22 +821,38 @@ function handleWheel(e: WheelEvent) {
 
 function importMap(json: string): void {
   try {
-    const data = JSON.parse(json)
-
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const src = data[y]?.[x]
-        if (!src) continue
-
-        grid[y]![x]!.walls = src.walls ?? 0
-        grid[y]![x]!.doors = src.doors ?? 0
-        grid[y]![x]!.upstair = src.upstair ?? 0
-        grid[y]![x]!.downstair = src.downstair ?? 0
-        grid[y]![x]!.walkable = src.walkable ?? false
-      }
+    const data: unknown = JSON.parse(json)
+    if (
+      !Array.isArray(data) || data.length === 0 ||
+      !Array.isArray(data[0]) || data[0].length === 0 ||
+      !data.every(row => Array.isArray(row) && row.length === data[0].length)
+    ) {
+      throw new Error('Map must be a non-empty rectangular grid')
     }
 
-    draw()
+    const importedGrid: Cell[][] = data.map((row: unknown[]) =>
+      row.map((src: unknown) => {
+        if (!src || typeof src !== 'object') {
+          throw new Error('Invalid map cell')
+        }
+        const cell = src as Partial<Cell>
+        return {
+          walls: cell.walls ?? 0,
+          doors: cell.doors ?? 0,
+          upstair: cell.upstair ?? 0,
+          downstair: cell.downstair ?? 0,
+          walkable: cell.walkable ?? false
+        }
+      })
+    )
+
+    grid.splice(0, grid.length, ...importedGrid)
+    rows.value = importedGrid.length
+    cols.value = importedGrid[0]!.length
+    nextTick(() => {
+      resizeCanvasBackingStore()
+      draw()
+    })
   } catch (e) {
     console.error('Invalid map JSON', e)
   }
@@ -805,24 +875,101 @@ function line(x1: number, y1: number, x2: number, y2: number): void {
   ctx.stroke()
 }
 
+function openContextMenu(e: MouseEvent): void {
+  contextMenu.x = Math.min(e.clientX, window.innerWidth - 240)
+  contextMenu.y = Math.min(e.clientY, window.innerHeight - 330)
+  contextMenu.visible = true
+}
+
 function newMap(): void {
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      grid[y]![x]!.walls = 0
-      grid[y]![x]!.doors = 0
-      grid[y]![x]!.upstair = 0
-      grid[y]![x]!.downstair = 0
-      grid[y]![x]!.walkable = false
-    }
-  }
+  rows.value = 20
+  cols.value = 20
+  grid.splice(0, grid.length, ...Array.from(
+    { length: rows.value },
+    () => Array.from({ length: cols.value }, createEmptyCell)
+  ))
   localStorage.removeItem(AUTOSAVE_KEY)
-  draw()
+  nextTick(() => {
+    resizeCanvasBackingStore()
+    draw()
+  })
 }
 
 function normalizeEdge(x: number, y: number, edge: Edge) {
   if (edge === W) return { x: x - 1, y, edge: E }
   if (edge === N) return { x, y: y - 1, edge: S }
   return { x, y, edge }
+}
+
+function resizeCanvasBackingStore(): void {
+  if (!canvas.value || !ctx) return
+  const dpr = window.devicePixelRatio || 1
+  canvas.value.width = Math.round(canvasWidth.value * dpr)
+  canvas.value.height = Math.round(canvasHeight.value * dpr)
+  canvas.value.style.width = `${canvasWidth.value}px`
+  canvas.value.style.height = `${canvasHeight.value}px`
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+}
+
+function resizeMap(action: ResizeAction): void {
+  contextMenu.visible = false
+
+  switch (action) {
+    case 'add-left':
+      grid.forEach(row => row.unshift(createEmptyCell()))
+      cols.value++
+      break
+
+    case 'add-right':
+      grid.forEach(row => row.push(createEmptyCell()))
+      cols.value++
+      break
+
+    case 'add-top':
+      grid.unshift(
+        Array.from({ length: cols.value }, createEmptyCell)
+      )
+      rows.value++
+      break
+
+    case 'add-bottom':
+      grid.push(
+        Array.from({ length: cols.value }, createEmptyCell)
+      )
+      rows.value++
+      break
+
+    case 'remove-left':
+      if (cols.value <= 1) return
+      grid.forEach(row => row.shift())
+      cols.value--
+      break
+
+    case 'remove-right':
+      if (cols.value <= 1) return
+      grid.forEach(row => row.pop())
+      cols.value--
+      break
+
+    case 'remove-top':
+      if (rows.value <= 1) return
+      grid.shift()
+      rows.value--
+      break
+
+    case 'remove-bottom':
+      if (rows.value <= 1) return
+      grid.pop()
+      rows.value--
+      break
+  }
+
+  nextTick(() => {
+    resizeCanvasBackingStore()
+    draw()
+  })
 }
 
 function screenToWorld(mx: number, my: number) {
