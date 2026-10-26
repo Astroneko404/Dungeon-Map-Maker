@@ -25,14 +25,18 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, reactive, computed, nextTick } from 'vue'
-import ContextMenu from './ContextMenu.vue'
-import type { ResizeAction } from './ContextMenu.vue'
-import doorClosedIcon from '@/assets/legend/doorclosed.svg?url'
-import downStairIcon from '@/assets/legend/downstair.svg?url'
-import upStairIcon from '@/assets/legend/upstair.svg?url'
-import doorClosedSvg from '@/assets/legend/doorclosed.svg?raw'
-import downStairSvg from '@/assets/legend/downstair.svg?raw'
-import upStairSvg from '@/assets/legend/upstair.svg?raw'
+import ContextMenu from "./ContextMenu.vue"
+import type { ResizeAction } from "./ContextMenu.vue"
+import doorClosedIcon from "@/assets/legend/doorclosed.svg?url"
+import downStairIcon from "@/assets/legend/downstair.svg?url"
+import upStairIcon from "@/assets/legend/upstair.svg?url"
+import eventIcon from "@/assets/legend/event.svg?url"
+import treasureIcon from "@/assets/legend/treasure.svg?url"
+import doorClosedSvg from "@/assets/legend/doorclosed.svg?raw"
+import downStairSvg from "@/assets/legend/downstair.svg?raw"
+import upStairSvg from "@/assets/legend/upstair.svg?raw"
+import eventSvg from "@/assets/legend/event.svg?raw"
+import treasureSvg from "@/assets/legend/treasure.svg?raw"
 defineExpose({
   newMap,
   exportMap,
@@ -62,7 +66,7 @@ const E = 2 as const
 const S = 4 as const
 const W = 8 as const
 const props = defineProps<{
-  tool: 'wall' | 'door' | 'downstair' | 'upstair' | 'walkable'
+  tool: "wall" | "door" | "downstair" | "upstair" | "walkable" | "event" | "treasure"
 }>()
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
@@ -79,6 +83,8 @@ type Cell = {
   upstair: number           // 0: No upstair | 1: Upstair
   downstair: number         // 0: No downstair | 1: Downstair
   walkable: boolean
+  event: number              // 0: No event | 1: Event
+  treasure: number           // 0: No treasure | 1: Treasure
 }
 
 const AUTOSAVE_KEY = 'map-autosave'
@@ -116,6 +122,26 @@ upStairImg.onerror = (e) => {
 upStairImg.crossOrigin = 'anonymous'
 upStairImg.src = upStairIcon
 
+const eventImg = new Image()
+eventImg.onload = () => {
+  draw()
+}
+eventImg.onerror = (e) => {
+  console.error('Failed to load Event SVG', e)
+}
+eventImg.crossOrigin = 'anonymous'
+eventImg.src = eventIcon
+
+const treasureImg = new Image()
+treasureImg.onload = () => {
+  draw()
+}
+treasureImg.onerror = (e) => {
+  console.error('Failed to load Treasure SVG', e)
+}
+treasureImg.crossOrigin = 'anonymous'
+treasureImg.src = treasureIcon
+
 //////////////////////////
 // State
 //////////////////////////
@@ -128,7 +154,9 @@ const grid: Cell[][] = Array.from({ length: rows.value }, () =>
     doors: 0,
     upstair: 0,
     downstair: 0,
-    walkable: false
+    walkable: false,
+    event: 0,
+    treasure: 0
   }))
 )
 
@@ -176,6 +204,12 @@ function applyTool(x: number, y: number, edge?: Edge): void {
     case "walkable":
       grid[y]![x]!.walkable = !grid[y]![x]!.walkable
       break
+    case "event":
+      toggleCellObject(x, y, 'event')
+      break
+    case "treasure":
+      toggleCellObject(x, y, 'treasure')
+      break
   }
 }
 
@@ -210,7 +244,9 @@ function createEmptyCell(): Cell {
     doors: 0,
     upstair: 0,
     downstair: 0,
-    walkable: false
+    walkable: false,
+    event: 0,
+    treasure: 0
   }
 }
 
@@ -377,24 +413,16 @@ function drawContents(x: number, y: number, cell: Cell): void {
   ctx.strokeStyle = '#000'
   ctx.lineWidth = 2
 
-  // Walls
   if (cell.walls & N) line(px, py, px + tileSize, py)
   if (cell.walls & E) line(px + tileSize, py, px + tileSize, py + tileSize)
   if (cell.walls & S) line(px, py + tileSize, px + tileSize, py + tileSize)
   if (cell.walls & W) line(px, py, px, py + tileSize)
 
-  // Doors
-  if (cell.doors) {
-    drawCellContent(x, y, doorImg)
-  }
-
-  if (cell.upstair) {
-    drawCellContent(x, y, upStairImg)
-  }
-
-  if (cell.downstair) {
-    drawCellContent(x, y, downStairImg)
-  }
+  if (cell.doors) {drawCellContent(x, y, doorImg)}
+  if (cell.upstair) {drawCellContent(x, y, upStairImg)}
+  if (cell.downstair) {drawCellContent(x, y, downStairImg)}
+  if (cell.event) {drawCellContent(x, y, eventImg)}
+  if (cell.treasure) {drawCellContent(x, y, treasureImg)}
 }
 
 function drawCellContent(x: number, y: number, img: HTMLImageElement, padding = 3): void {
@@ -559,35 +587,18 @@ function exportSVG(
       }
 
       // Walls
-      if (cell.walls & N)
-        addWall(`h-${x}-${y}`, px, py, px + tileSize, py)
-
-      if (cell.walls & S)
-        addWall(`h-${x}-${y + 1}`, px, py + tileSize, px + tileSize, py + tileSize)
-
-      if (cell.walls & W)
-        addWall(`v-${x}-${y}`, px, py, px, py + tileSize)
-
-      if (cell.walls & E)
-        addWall(`v-${x + 1}-${y}`, px + tileSize, py, px + tileSize, py + tileSize)
+      if (cell.walls & N) {addWall(`h-${x}-${y}`, px, py, px + tileSize, py)}
+      if (cell.walls & S) {addWall(`h-${x}-${y + 1}`, px, py + tileSize, px + tileSize, py + tileSize)}
+      if (cell.walls & W) {addWall(`v-${x}-${y}`, px, py, px, py + tileSize)}
+      if (cell.walls & E) {addWall(`v-${x + 1}-${y}`, px + tileSize, py, px + tileSize, py + tileSize)}
 
       // Icons
       if (includeIcon) {
-        if (cell.doors) {
-          icons.push(
-            embedSvgIcon(doorClosedSvg, px, py, lineColor)
-          )
-        }
-        if (cell.upstair) {
-          icons.push(
-            embedSvgIcon(upStairSvg, px, py, lineColor)
-          )
-        }
-        if (cell.downstair) {
-          icons.push(
-            embedSvgIcon(downStairSvg, px, py, lineColor)
-          )
-        }
+        if (cell.doors) {icons.push(embedSvgIcon(doorClosedSvg, px, py, lineColor))}
+        if (cell.upstair) {icons.push(embedSvgIcon(upStairSvg, px, py, lineColor))}
+        if (cell.downstair) {icons.push(embedSvgIcon(downStairSvg, px, py, lineColor))}
+        if (cell.event) {icons.push(embedSvgIcon(eventSvg, px, py, lineColor))}
+        if (cell.treasure) {icons.push(embedSvgIcon(treasureSvg, px, py, lineColor))}
       }
     }
   }
@@ -715,7 +726,9 @@ function handleClick(e: MouseEvent): void {
     tool === "door" || 
     tool === "upstair" || 
     tool === "downstair" || 
-    tool === "walkable"
+    tool === "walkable" ||
+    tool === "event" ||
+    tool === "treasure"
   ) {
     if (
       gridX < 0 ||
@@ -841,7 +854,9 @@ function importMap(json: string): void {
           doors: cell.doors ?? 0,
           upstair: cell.upstair ?? 0,
           downstair: cell.downstair ?? 0,
-          walkable: cell.walkable ?? false
+          walkable: cell.walkable ?? false,
+          event: cell.event ?? 0,
+          treasure: cell.treasure ?? 0
         }
       })
     )
@@ -981,7 +996,7 @@ function screenToWorld(mx: number, my: number) {
 function toggleCellObject(
   x: number, 
   y: number, 
-  object: "door" | "upstair" | "downstair"): void {
+  object: "door" | "upstair" | "downstair" | "event" | "treasure"): void {
     const cell = grid[y]![x]!
     switch (object) {
       case "door":
@@ -992,6 +1007,12 @@ function toggleCellObject(
         break
       case "downstair":
         cell.downstair = 1 - cell.downstair
+        break
+      case "event":
+        cell.event = 1 - cell.event
+        break
+      case "treasure":
+        cell.treasure = 1 - cell.treasure
         break
     }
 }

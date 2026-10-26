@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar.vue'
 import DungeonCanvas from './components/DungeonCanvas.vue'
 import HeaderBar from './components/HeadBar.vue'
 
-type Tool = 'wall' | 'door' | 'downstair' | 'upstair' | "walkable"
+type Tool = 'wall' | 'door' | 'downstair' | 'upstair' | "walkable" | "event" | "treasure"
 const currentTool = ref<Tool>('wall')
 
 const canvasRef = ref<InstanceType<typeof DungeonCanvas> | null>(null)

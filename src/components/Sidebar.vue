@@ -5,8 +5,10 @@
   import doorClosedIcon from '@/assets/legend/doorclosed.svg?url'
   import downStairIcon from '@/assets/legend/downstair.svg?url'
   import upStairIcon from '@/assets/legend/upstair.svg?url'
+  import eventIcon from "@/assets/legend/event.svg?url"
+  import treasureIcon from "@/assets/legend/treasure.svg?url"
 
-  type Tool = 'wall' | 'door' | 'downstair' | 'upstair' | 'walkable'
+  type Tool = "wall" | "door" | "downstair" | "upstair" | "walkable" | "event" | "treasure"
 
   const emit = defineEmits<{
     (e: 'changeTool', tool: Tool): void
@@ -70,6 +72,23 @@
           <img :src="upStairIcon" />
           <span>Stairs - Up</span>
         </button>
+
+        <button 
+          :class="{ active: props.tool === 'event' }"
+          @click="emit('changeTool', 'event')"
+        >
+          <img :src="eventIcon" />
+          <span>Event</span>
+        </button>
+
+        <button 
+          :class="{ active: props.tool === 'treasure' }"
+          @click="emit('changeTool', 'treasure')"
+        >
+          <img :src="treasureIcon" />
+          <span>Treasure</span>
+        </button>
+        
       </div>
     </div>
   </div>
