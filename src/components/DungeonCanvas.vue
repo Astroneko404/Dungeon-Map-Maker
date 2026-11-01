@@ -27,21 +27,15 @@
 import { ref, onMounted, onUnmounted, reactive, computed, nextTick } from 'vue'
 import ContextMenu from "./ContextMenu.vue"
 import type { ResizeAction } from "./ContextMenu.vue"
-import doorClosedIcon from "@/assets/legend/doorclosed.svg?url"
-import downStairIcon from "@/assets/legend/downstair.svg?url"
-import upStairIcon from "@/assets/legend/upstair.svg?url"
-import eventIcon from "@/assets/legend/event.svg?url"
-import treasureIcon from "@/assets/legend/treasure.svg?url"
-import doorClosedSvg from "@/assets/legend/doorclosed.svg?raw"
-import downStairSvg from "@/assets/legend/downstair.svg?raw"
-import upStairSvg from "@/assets/legend/upstair.svg?raw"
-import eventSvg from "@/assets/legend/event.svg?raw"
-import treasureSvg from "@/assets/legend/treasure.svg?raw"
+import { CELL_OBJECTS, CELL_OBJECT_CONFIG, isCellObject, getCellObjectColor } from '@/types/game'
+import type { CellObject, Tool } from '@/types/game'
+
 defineExpose({
   newMap,
   exportMap,
   importMap,
-  exportSVG
+  exportSVG,
+  exportImage
 })
 
 //////////////////////////
@@ -65,8 +59,11 @@ const N = 1 as const
 const E = 2 as const
 const S = 4 as const
 const W = 8 as const
+const areaObjects = CELL_OBJECTS.filter(
+  object => getCellObjectColor(object) !== undefined
+)
 const props = defineProps<{
-  tool: "wall" | "door" | "downstair" | "upstair" | "walkable" | "event" | "treasure"
+  tool: Tool
 }>()
 const scale = ref(1)
 const offset = ref({ x: 0, y: 0 })
@@ -78,69 +75,23 @@ let zoomTimeout: number | null = null
 
 type Edge = typeof N | typeof E | typeof S | typeof W
 type Cell = {
-  walls: number             // bitmask (N,E,S,W)
-  doors: number             // 0: No door | 1: Door closed
-  upstair: number           // 0: No upstair | 1: Upstair
-  downstair: number         // 0: No downstair | 1: Downstair
-  walkable: boolean
-  event: number              // 0: No event | 1: Event
-  treasure: number           // 0: No treasure | 1: Treasure
-}
+  walls: number
+} & Record<CellObject, number>
 
 const AUTOSAVE_KEY = 'map-autosave'
 
 //////////////////////////
 // Image Assets
 //////////////////////////
-const doorImg = new Image()
-doorImg.onload = () => {
-  draw()
-}
-doorImg.onerror = (e) => {
-  console.error('Failed to load Door SVG', e)
-}
-doorImg.crossOrigin = 'anonymous'
-doorImg.src = doorClosedIcon
+const cellImages: Partial<Record<CellObject, HTMLImageElement>> = {}
 
-const downStairImg = new Image()
-downStairImg.onload = () => {
-  draw()
+for (const object of CELL_OBJECTS) {
+  const src = CELL_OBJECT_CONFIG[object].icon
+  if (src) {cellImages[object] = loadImage(src, object)}
 }
-downStairImg.onerror = (e) => {
-  console.error('Failed to load Down Stair SVG', e)
-}
-downStairImg.crossOrigin = 'anonymous'
-downStairImg.src = downStairIcon
-
-const upStairImg = new Image()
-upStairImg.onload = () => {
-  draw()
-}
-upStairImg.onerror = (e) => {
-  console.error('Failed to load Up Stair SVG', e)
-}
-upStairImg.crossOrigin = 'anonymous'
-upStairImg.src = upStairIcon
-
-const eventImg = new Image()
-eventImg.onload = () => {
-  draw()
-}
-eventImg.onerror = (e) => {
-  console.error('Failed to load Event SVG', e)
-}
-eventImg.crossOrigin = 'anonymous'
-eventImg.src = eventIcon
-
-const treasureImg = new Image()
-treasureImg.onload = () => {
-  draw()
-}
-treasureImg.onerror = (e) => {
-  console.error('Failed to load Treasure SVG', e)
-}
-treasureImg.crossOrigin = 'anonymous'
-treasureImg.src = treasureIcon
+const drawableObjects = CELL_OBJECTS.filter(
+  object => cellImages[object] !== undefined
+)
 
 //////////////////////////
 // State
@@ -148,16 +99,12 @@ treasureImg.src = treasureIcon
 const canvas = ref<HTMLCanvasElement | null>(null)
 let ctx: CanvasRenderingContext2D | null = null
 
-const grid: Cell[][] = Array.from({ length: rows.value }, () =>
-  Array.from({ length: cols.value }, (): Cell => ({
-    walls: 0,
-    doors: 0,
-    upstair: 0,
-    downstair: 0,
-    walkable: false,
-    event: 0,
-    treasure: 0
-  }))
+const grid: Cell[][] = Array.from(
+  { length: rows.value },
+  () => Array.from(
+    { length: cols.value },
+    () => createEmptyCell()
+  )
 )
 
 const contextMenu = reactive({
@@ -186,30 +133,13 @@ onUnmounted(() => {
 function applyTool(x: number, y: number, edge?: Edge): void {
   const tool = props.tool
 
-  switch (tool) {
-    case 'wall':
-      if (edge != undefined) {
-        toggleWall(x, y, edge)
-      }
-      break
-    case 'door':
-      toggleCellObject(x, y, 'door')
-      break
-    case 'upstair':
-      toggleCellObject(x, y, 'upstair')
-      break
-    case 'downstair':
-      toggleCellObject(x, y, 'downstair')
-      break
-    case "walkable":
-      grid[y]![x]!.walkable = !grid[y]![x]!.walkable
-      break
-    case "event":
-      toggleCellObject(x, y, 'event')
-      break
-    case "treasure":
-      toggleCellObject(x, y, 'treasure')
-      break
+  if (tool === 'wall') {
+    if (edge !== undefined) {
+      toggleWall(x, y, edge)
+    }
+  } 
+  else if (isCellObject(tool)) {
+    toggleCellObject(x, y, tool)
   }
 }
 
@@ -239,15 +169,12 @@ function clearEdge(x: number, y: number, edge: Edge) {
 }
 
 function createEmptyCell(): Cell {
-  return {
-    walls: 0,
-    doors: 0,
-    upstair: 0,
-    downstair: 0,
-    walkable: false,
-    event: 0,
-    treasure: 0
+  const cell = { walls: 0 } as Cell
+  for (const object of CELL_OBJECTS) {
+    cell[object] = 0
   }
+
+  return cell
 }
 
 function dashedLine(x1: number, y1: number, x2: number, y2: number): void {
@@ -397,19 +324,22 @@ function drawGrid(): void {
 function drawContents(x: number, y: number, cell: Cell): void {
   if (!ctx) return
 
-  if (cell.walkable) {
-  ctx.fillStyle = 'aliceblue'
-  ctx.fillRect(
-    x * tileSize,
-    y * tileSize,
-    tileSize,
-    tileSize
-  )
-}
-
   const px = x * tileSize
   const py = y * tileSize
 
+  // Draw colored areas
+  for (const object of areaObjects) {
+    if (cell[object]) {
+      const color = getCellObjectColor(object)
+
+      if (color) {
+        ctx.fillStyle = color
+        ctx.fillRect(px, py, tileSize, tileSize)
+      }
+    }
+  }
+
+  // Draw walls
   ctx.strokeStyle = '#000'
   ctx.lineWidth = 2
 
@@ -418,11 +348,11 @@ function drawContents(x: number, y: number, cell: Cell): void {
   if (cell.walls & S) line(px, py + tileSize, px + tileSize, py + tileSize)
   if (cell.walls & W) line(px, py, px, py + tileSize)
 
-  if (cell.doors) {drawCellContent(x, y, doorImg)}
-  if (cell.upstair) {drawCellContent(x, y, upStairImg)}
-  if (cell.downstair) {drawCellContent(x, y, downStairImg)}
-  if (cell.event) {drawCellContent(x, y, eventImg)}
-  if (cell.treasure) {drawCellContent(x, y, treasureImg)}
+  // Draw icons
+  for (const object of drawableObjects) {
+    const img = cellImages[object]
+    if (cell[object] && img) {drawCellContent(x, y, img)}
+  }
 }
 
 function drawCellContent(x: number, y: number, img: HTMLImageElement, padding = 3): void {
@@ -535,6 +465,34 @@ function embedSvgIcon(
   return new XMLSerializer().serializeToString(svg)
 }
 
+function exportImage(format: 'png' | 'jpeg'): string {
+  if (!canvas.value) {
+    throw new Error('Canvas is not available')
+  }
+
+  const source = canvas.value
+  const output = document.createElement('canvas')
+
+  output.width = source.width
+  output.height = source.height
+
+  const context = output.getContext('2d')
+
+  if (!context) {
+    throw new Error('Could not create image context')
+  }
+
+  context.fillStyle = 'aliceblue'
+  context.fillRect(0, 0, output.width, output.height)
+  context.drawImage(source, 0, 0)
+
+  const mimeType = format === 'jpeg'
+    ? 'image/jpeg'
+    : 'image/png'
+
+  return output.toDataURL(mimeType, 0.95)
+}
+
 function exportMap(): string {
   return JSON.stringify(grid)
 }
@@ -594,11 +552,10 @@ function exportSVG(
 
       // Icons
       if (includeIcon) {
-        if (cell.doors) {icons.push(embedSvgIcon(doorClosedSvg, px, py, lineColor))}
-        if (cell.upstair) {icons.push(embedSvgIcon(upStairSvg, px, py, lineColor))}
-        if (cell.downstair) {icons.push(embedSvgIcon(downStairSvg, px, py, lineColor))}
-        if (cell.event) {icons.push(embedSvgIcon(eventSvg, px, py, lineColor))}
-        if (cell.treasure) {icons.push(embedSvgIcon(treasureSvg, px, py, lineColor))}
+        for (const object of CELL_OBJECTS) {
+          const svg = CELL_OBJECT_CONFIG[object].svg
+          if (cell[object] && svg) {icons.push(embedSvgIcon(svg, px, py, lineColor))}
+        }
       }
     }
   }
@@ -722,14 +679,7 @@ function handleClick(e: MouseEvent): void {
   }
   
   // Find closest cell
-  if (
-    tool === "door" || 
-    tool === "upstair" || 
-    tool === "downstair" || 
-    tool === "walkable" ||
-    tool === "event" ||
-    tool === "treasure"
-  ) {
+  if (isCellObject(tool)) {
     if (
       gridX < 0 ||
       gridY < 0 ||
@@ -848,16 +798,13 @@ function importMap(json: string): void {
         if (!src || typeof src !== 'object') {
           throw new Error('Invalid map cell')
         }
-        const cell = src as Partial<Cell>
-        return {
-          walls: cell.walls ?? 0,
-          doors: cell.doors ?? 0,
-          upstair: cell.upstair ?? 0,
-          downstair: cell.downstair ?? 0,
-          walkable: cell.walkable ?? false,
-          event: cell.event ?? 0,
-          treasure: cell.treasure ?? 0
-        }
+
+        const imported = src as Partial<Cell>
+        const cell = createEmptyCell()
+        cell.walls = imported.walls ?? 0
+        for (const object of CELL_OBJECTS) {cell[object] = imported[object] ?? 0}
+
+        return cell
       })
     )
 
@@ -873,14 +820,6 @@ function importMap(json: string): void {
   }
 }
 
-function loadAutoSave(): void {
-  const json = localStorage.getItem(AUTOSAVE_KEY)
-
-  if (!json) return
-
-  importMap(json)
-}
-
 function line(x1: number, y1: number, x2: number, y2: number): void {
   if (!ctx) return
 
@@ -888,6 +827,23 @@ function line(x1: number, y1: number, x2: number, y2: number): void {
   ctx.moveTo(x1, y1)
   ctx.lineTo(x2, y2)
   ctx.stroke()
+}
+
+function loadAutoSave(): void {
+  const json = localStorage.getItem(AUTOSAVE_KEY)
+  if (!json) return
+  importMap(json)
+}
+
+function loadImage(src: string, name: string): HTMLImageElement {
+  const img = new Image()
+
+  img.onload = () => {draw()}
+  img.onerror = (event) => {console.error(`Failed to load ${name} SVG`, event)}
+  img.crossOrigin = 'anonymous'
+  img.src = src
+
+  return img
 }
 
 function openContextMenu(e: MouseEvent): void {
@@ -996,25 +952,10 @@ function screenToWorld(mx: number, my: number) {
 function toggleCellObject(
   x: number, 
   y: number, 
-  object: "door" | "upstair" | "downstair" | "event" | "treasure"): void {
+  object: CellObject
+  ): void {
     const cell = grid[y]![x]!
-    switch (object) {
-      case "door":
-        cell.doors = 1 - cell.doors
-        break
-      case "upstair":
-        cell.upstair = 1 - cell.upstair
-        break
-      case "downstair":
-        cell.downstair = 1 - cell.downstair
-        break
-      case "event":
-        cell.event = 1 - cell.event
-        break
-      case "treasure":
-        cell.treasure = 1 - cell.treasure
-        break
-    }
+    cell[object] = 1 - cell[object]
 }
 
 function toggleWall(x: number, y: number, edge: Edge): void {

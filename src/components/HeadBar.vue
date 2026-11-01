@@ -32,7 +32,7 @@
 
     <button 
       @click="openExportDialog"
-      title="Export the current map as SVG"
+      title="Export the current map as an image"
     >
         <img :src="exportIcon" />
     </button>
@@ -49,9 +49,26 @@
   </div>
 
   <dialog ref="exportDialog">
-    <h3>Export SVG</h3>
+    <h3>Export Image</h3>
 
-    <div class="export-section">
+    <div class="export-tabs">
+      <button
+        :class="{ active: exportTab === 'svg' }"
+        @click="exportTab = 'svg'"
+      >
+        SVG
+      </button>
+
+      <button
+        :class="{ active: exportTab === 'raster' }"
+        @click="exportTab = 'raster'"
+      >
+        PNG / JPEG
+      </button>
+    </div>
+
+    <template v-if="exportTab === 'svg'">
+      <div class="export-section">
       <h4>Layout</h4>
       <label>
         <input type="checkbox" v-model="includeIcon" />
@@ -62,6 +79,7 @@
         Include the title
       </label>
     </div>
+    <hr class="export-divider" />
 
     <div class="export-section">
       <h4>Colors</h4>
@@ -78,10 +96,35 @@
         </label>
       </div>
     </div>
+    </template>
+    
+    <template v-else>
+    <div class="export-section">
+      <h4>Image Format</h4>
+
+      <label>
+        <input
+          type="radio"
+          value="png"
+          v-model="imageFormat"
+        />
+        PNG
+      </label>
+
+      <label>
+        <input
+          type="radio"
+          value="jpeg"
+          v-model="imageFormat"
+        />
+        JPEG
+      </label>
+    </div>
+  </template>
 
     <div class="dialog-actions">
       <button @click="closeExportDialog">Cancel</button>
-      <button @click="exportSvg">Export</button>
+      <button @click="exportImage">Export</button>
     </div>
   </dialog>
 </template>
@@ -93,6 +136,10 @@ import openIcon from '@/assets/open.svg?url'
 import saveIcon from '@/assets/save.svg?url'
 import exportIcon from '@/assets/export.svg?url'
 
+const exportTab = ref<'svg' | 'raster'>('svg')
+const imageFormat = ref<'png' | 'jpeg'>('png')
+
+const backgroundColor = ref('#d3d8dd')
 const lineColor = ref('#000000')
 const fillColor = ref('#f0f8ff')
 
@@ -109,6 +156,9 @@ const props = defineProps<{
     lineColor: string,
     fillColor: string
   ) => string
+  exportImage: (
+    format: "png" | "jpeg"
+  ) => string
 }>()
 
 const exportDialog = ref<HTMLDialogElement | null>(null)
@@ -121,6 +171,32 @@ function openExportDialog() {
 
 function closeExportDialog() {
   exportDialog.value?.close()
+}
+
+function exportImage() {
+  if (exportTab.value === 'svg') {
+    exportSvg()
+  } else {
+    exportRasterImage()
+  }
+}
+
+function exportRasterImage() {
+  try {
+    const dataUrl = props.exportImage(
+      imageFormat.value
+    )
+
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `${mapName.value || 'dungeon-map'}.${imageFormat.value}`
+    a.click()
+
+    closeExportDialog()
+  } catch (error) {
+    console.error('Failed to export image', error)
+    alert('Could not export image')
+  }
 }
 
 function exportSvg() {
@@ -323,6 +399,12 @@ dialog label {
   white-space: nowrap;
 }
 
+.export-divider {
+  border: none;
+  border-top: 1px solid #555;
+  margin: 12px 0;
+}
+
 .export-dialog {
   min-width: 340px;
 }
@@ -333,7 +415,7 @@ dialog label {
 
 .export-section {
   padding: 14px 0;
-  border-top: 1px solid #444;
+  /* border-top: 1px solid #444; */
 }
 
 .export-section h4 {
@@ -350,5 +432,34 @@ dialog label {
   width: 16px;
   height: 16px;
   accent-color: #8caaff;
+}
+
+.export-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+  border-bottom: 1px solid #555;
+}
+
+.export-tabs button {
+  width: auto;
+  height: auto;
+  flex: 1;
+  padding: 10px 16px;
+  color: #aaa;
+  background: transparent;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.export-tabs button:hover {
+  color: white;
+  background: #333;
+}
+
+.export-tabs button.active {
+  color: white;
+  border-bottom-color: aliceblue;
 }
 </style>

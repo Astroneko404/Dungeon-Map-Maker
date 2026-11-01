@@ -1,14 +1,7 @@
 <script setup lang="ts">
   import wallIcon from '@/assets/legend/wall.svg?url'
-  // import doorIcon from '@/assets/legend/door.svg?url'
-  import doorOpenedIcon from '@/assets/legend/dooropened.svg?url'
-  import doorClosedIcon from '@/assets/legend/doorclosed.svg?url'
-  import downStairIcon from '@/assets/legend/downstair.svg?url'
-  import upStairIcon from '@/assets/legend/upstair.svg?url'
-  import eventIcon from "@/assets/legend/event.svg?url"
-  import treasureIcon from "@/assets/legend/treasure.svg?url"
-
-  type Tool = "wall" | "door" | "downstair" | "upstair" | "walkable" | "event" | "treasure"
+  import { CELL_OBJECTS, CELL_OBJECT_CONFIG, getCellObjectColor } from '@/types/game'
+  import type { Tool } from '@/types/game'
 
   const emit = defineEmits<{
     (e: 'changeTool', tool: Tool): void
@@ -42,55 +35,24 @@
 
       <div class="grid">
         <button
-          :class="{ active: props.tool === 'walkable' }"
-          @click="emit('changeTool', 'walkable')"
+          v-for="object in CELL_OBJECTS"
+          :key="object"
+          :class="{ active: props.tool === object }"
+          @click="emit('changeTool', object)"
         >
-          <span class="walkable-icon"></span>
-          <span>Walkable Area</span>
-        </button>
+          <img
+            v-if="CELL_OBJECT_CONFIG[object].icon"
+            :src="CELL_OBJECT_CONFIG[object].icon!"
+            :alt="CELL_OBJECT_CONFIG[object].label"
+          />
 
-        <button 
-          :class="{ active: props.tool === 'door' }"
-          @click="emit('changeTool', 'door')"
-        >
-          <img :src="doorClosedIcon" />
-          <span>Door</span>
-        </button>
+          <span v-else class="area-icon":style="{backgroundColor: getCellObjectColor(object)}"></span>
 
-        <button 
-          :class="{ active: props.tool === 'downstair' }"
-          @click="emit('changeTool', 'downstair')"
-        >
-          <img :src="downStairIcon" />
-          <span>Stairs - Down</span>
+          <span>{{ CELL_OBJECT_CONFIG[object].label }}</span>
         </button>
-
-        <button 
-          :class="{ active: props.tool === 'upstair' }"
-          @click="emit('changeTool', 'upstair')"
-        >
-          <img :src="upStairIcon" />
-          <span>Stairs - Up</span>
-        </button>
-
-        <button 
-          :class="{ active: props.tool === 'event' }"
-          @click="emit('changeTool', 'event')"
-        >
-          <img :src="eventIcon" />
-          <span>Event</span>
-        </button>
-
-        <button 
-          :class="{ active: props.tool === 'treasure' }"
-          @click="emit('changeTool', 'treasure')"
-        >
-          <img :src="treasureIcon" />
-          <span>Treasure</span>
-        </button>
-        
       </div>
     </div>
+    
   </div>
 </template>
 
@@ -126,11 +88,9 @@
   gap: 8px;
 }
 
-.walkable-icon {
+.area-icon {
   width: 28px;
   height: 28px;
-  background-color: aliceblue;
-  border: 1px solid #aaa;
   border-radius: 3px;
 }
 

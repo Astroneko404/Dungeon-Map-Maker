@@ -3,14 +3,22 @@ import { ref, toRaw } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import DungeonCanvas from './components/DungeonCanvas.vue'
 import HeaderBar from './components/HeadBar.vue'
+import type { Tool } from '@/types/game'
 
-type Tool = 'wall' | 'door' | 'downstair' | 'upstair' | "walkable" | "event" | "treasure"
 const currentTool = ref<Tool>('wall')
 
 const canvasRef = ref<InstanceType<typeof DungeonCanvas> | null>(null)
 
 function newMap () {
   canvasRef.value?.newMap()
+}
+
+function exportImage(format: "png" | "jpeg"): string {
+  if (!canvasRef.value) {
+    throw new Error('Canvas is not ready')
+  }
+
+  return canvasRef.value.exportImage(format)
 }
 
 function exportMap() {
@@ -48,6 +56,7 @@ function importMap(json: string) {
       :importMap="importMap"
       :newMap="newMap"
       :exportSvg="exportSvg"
+      :exportImage="exportImage"
     />
     <div class="main">
       <Sidebar 
