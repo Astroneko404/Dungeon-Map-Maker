@@ -33,6 +33,7 @@ import type { CellObject, Tool } from '@/types/game'
 defineExpose({
   newMap,
   exportMap,
+  resizeMap,
   importMap,
   exportSVG,
   exportImage

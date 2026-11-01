@@ -4,14 +4,11 @@ import Sidebar from './components/Sidebar.vue'
 import DungeonCanvas from './components/DungeonCanvas.vue'
 import HeaderBar from './components/HeadBar.vue'
 import type { Tool } from '@/types/game'
+import type { ResizeAction } from './components/ContextMenu.vue'
 
 const currentTool = ref<Tool>('wall')
 
 const canvasRef = ref<InstanceType<typeof DungeonCanvas> | null>(null)
-
-function newMap () {
-  canvasRef.value?.newMap()
-}
 
 function exportImage(format: "png" | "jpeg"): string {
   if (!canvasRef.value) {
@@ -47,6 +44,14 @@ function exportSvg(
 function importMap(json: string) {
   canvasRef.value?.importMap(json)
 }
+
+function newMap () {
+  canvasRef.value?.newMap()
+}
+
+function resizeMap(action: ResizeAction): void {
+  canvasRef.value?.resizeMap(action)
+}
 </script>
 
 <template>
@@ -62,6 +67,7 @@ function importMap(json: string) {
       <Sidebar 
         :tool="currentTool"
         @changeTool="currentTool = $event" 
+        @resizeMap="resizeMap"
       />
 
       <DungeonCanvas 

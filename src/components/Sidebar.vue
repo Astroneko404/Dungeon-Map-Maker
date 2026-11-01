@@ -2,9 +2,11 @@
   import wallIcon from '@/assets/legend/wall.svg?url'
   import { CELL_OBJECTS, CELL_OBJECT_CONFIG, getCellObjectColor } from '@/types/game'
   import type { Tool } from '@/types/game'
+  import type { ResizeAction } from './ContextMenu.vue'
 
   const emit = defineEmits<{
     (e: 'changeTool', tool: Tool): void
+    (e: 'resizeMap', action: ResizeAction): void
   }>()
 
   const props = defineProps<{
@@ -52,7 +54,32 @@
         </button>
       </div>
     </div>
-    
+
+    <!-- ROW/COLUMN TOOLS -->
+    <div class="section">
+      <div class="section-title">Row/Column</div>
+
+      <div class="resize-grid">
+        <span></span>
+        <span>Add</span>
+        <span>Remove</span>
+
+        <template v-for="side in ['top', 'bottom', 'left', 'right'] as const" :key="side">
+          <span class="resize-label">
+            {{ side === 'top' || side === 'bottom' ? `${side} row` : `${side} column` }}
+          </span>
+
+          <button @click="emit('resizeMap', `add-${side}`)">
+            +
+          </button>
+
+          <button @click="emit('resizeMap', `remove-${side}`)">
+            -
+          </button>
+        </template>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -117,6 +144,45 @@ button:hover {
 
 button.active {
   background: #00aaff;
+}
+
+.resize-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 44px;
+  gap: 8px;
+  align-items: center;
+}
+
+.resize-grid > span:nth-child(2),
+.resize-grid > span:nth-child(3) {
+  text-align: center;
+  color: #aaa;
+  font-size: 11px;
+}
+
+.resize-grid button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  width: 44px;
+  height: 36px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.resize-label {
+  text-transform: capitalize;
+  font-size: 12px;
+  color: white;
+}
+
+.resize-grid button {
+  min-width: 0;
+  height: 36px;
+  padding: 0;
+  font-size: 20px;
 }
 
 /* Icon */
