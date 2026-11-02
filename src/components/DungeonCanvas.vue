@@ -495,7 +495,10 @@ function exportImage(format: 'png' | 'jpeg'): string {
 }
 
 function exportMap(): string {
-  return JSON.stringify(grid)
+  return JSON.stringify(grid, (_key, value) => {
+    if (value === 0 || value === false) {return undefined}
+    return value
+  })
 }
 
 function exportSVG(
@@ -803,7 +806,7 @@ function importMap(json: string): void {
         const imported = src as Partial<Cell>
         const cell = createEmptyCell()
         cell.walls = imported.walls ?? 0
-        for (const object of CELL_OBJECTS) {cell[object] = imported[object] ?? 0}
+        for (const object of CELL_OBJECTS) {cell[object] = Number(imported[object] ?? 0)}
 
         return cell
       })

@@ -1,16 +1,18 @@
-import doorIcon from '@/assets/legend/door_dungeon.svg?url'
-import upStairIcon from '@/assets/legend/upstair.svg?url'
-import downStairIcon from '@/assets/legend/downstair.svg?url'
-import eventIcon from '@/assets/legend/event.svg?url'
-import treasureIcon from '@/assets/legend/treasure.svg?url'
-import pitIcon from '@/assets/legend/pit.svg?url'
+import doorIcon from "@/assets/legend/door_dungeon.svg?url"
+import upStairIcon from "@/assets/legend/upstair.svg?url"
+import downStairIcon from "@/assets/legend/downstair.svg?url"
+import eventIcon from "@/assets/legend/event.svg?url"
+import treasureIcon from "@/assets/legend/treasure.svg?url"
+import pitIcon from "@/assets/legend/pit.svg?url"
+import teleportIcon from "@/assets/legend/teleport.svg?url"
 
-import doorSvg from '@/assets/legend/doorclosed.svg?raw'
-import upStairSvg from '@/assets/legend/upstair.svg?raw'
-import downStairSvg from '@/assets/legend/downstair.svg?raw'
-import eventSvg from '@/assets/legend/event.svg?raw'
-import treasureSvg from '@/assets/legend/treasure.svg?raw'
-import pitSvg from '@/assets/legend/pit.svg?raw'
+import doorSvg from "@/assets/legend/doorclosed.svg?raw"
+import upStairSvg from "@/assets/legend/upstair.svg?raw"
+import downStairSvg from "@/assets/legend/downstair.svg?raw"
+import eventSvg from "@/assets/legend/event.svg?raw"
+import treasureSvg from "@/assets/legend/treasure.svg?raw"
+import pitSvg from "@/assets/legend/pit.svg?raw"
+import teleportSvg from "@/assets/legend/teleport.svg?raw"
 
 export const CELL_OBJECT_CONFIG = {
   walkable: {
@@ -38,6 +40,11 @@ export const CELL_OBJECT_CONFIG = {
     label: 'Event',
     icon: eventIcon,
     svg: eventSvg
+  },
+  teleport: {
+    label: "Teleport",
+    icon: teleportIcon,
+    svg: teleportSvg
   },
   treasure: {
     label: 'Treasure',

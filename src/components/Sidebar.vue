@@ -91,7 +91,7 @@
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 /* Section */
